@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.orlando.bingoapp.ui.cobro.CobroScreen
 import com.orlando.bingoapp.ui.juego.JuegoScreen
 import com.orlando.bingoapp.ui.jugadas.EditorJugadaScreen
 import com.orlando.bingoapp.ui.jugadas.EditorJugadaViewModel
@@ -40,7 +41,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Pantalla { JUEGO, LISTA_TABLEROS, REGISTRO_TABLERO, JUGADAS, EDITOR_JUGADA }
+private enum class Pantalla { JUEGO, COBRO, LISTA_TABLEROS, REGISTRO_TABLERO, JUGADAS, EDITOR_JUGADA }
 
 /** Navegación simple entre pantallas. Cuando haya más, pasamos a Navigation Compose. */
 @Composable
@@ -78,6 +79,12 @@ fun BingoApp() {
                     label = { Text("Juego") }
                 )
                 NavigationBarItem(
+                    selected = pantalla == Pantalla.COBRO,
+                    onClick = { pantalla = Pantalla.COBRO },
+                    icon = { Text("💵", fontSize = 22.sp) },
+                    label = { Text("Cobro") }
+                )
+                NavigationBarItem(
                     selected = pantalla == Pantalla.LISTA_TABLEROS,
                     onClick = { pantalla = Pantalla.LISTA_TABLEROS },
                     icon = { Text("📋", fontSize = 22.sp) },
@@ -95,6 +102,7 @@ fun BingoApp() {
         // consumeWindowInsets evita que las pantallas internas dupliquen los márgenes del sistema
         Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
             when (pantalla) {
+                Pantalla.COBRO -> CobroScreen()
                 Pantalla.LISTA_TABLEROS -> ListaTablerosScreen(
                     onNuevoTablero = {
                         registroViewModel.reiniciar()

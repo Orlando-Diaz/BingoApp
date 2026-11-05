@@ -184,8 +184,13 @@ fun DialogoVerificarTablero(
                             else MaterialTheme.colorScheme.tertiary
                         )
                         verificacion.tablas.forEach { tabla ->
+                            val detalle = when {
+                                !tabla.pagada -> " — no pagada, no juega"
+                                tabla.ganadora != null -> " — ganó con ${tabla.ganadora.nombreModo}"
+                                else -> ""
+                            }
                             Text(
-                                "Tabla ${tabla.posicion}" + (tabla.ganadora?.let { " — ganó con ${it.nombreModo}" } ?: ""),
+                                "Tabla ${tabla.posicion}$detalle",
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             TablaMini(

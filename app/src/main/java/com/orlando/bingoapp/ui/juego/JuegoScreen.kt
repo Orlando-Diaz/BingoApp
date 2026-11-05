@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.orlando.bingoapp.domain.Dinero
 import com.orlando.bingoapp.domain.ReglasBingo
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -200,7 +201,7 @@ private fun TarjetaPremio(estado: EstadoJuego, onNuevaPartida: () -> Unit) {
                 Text("Partida terminada", style = MaterialTheme.typography.titleLarge)
                 estado.premios.forEach { p ->
                     Text(
-                        "${p.nombre} (${p.porcentaje}%): ${p.ganadores.orEmpty()} — con ${p.balotasAlGanar ?: 0} balotas",
+                        "${p.nombre} (${Dinero.formato(estado.valorPremio(p))}): ${p.ganadores.orEmpty()} — con ${p.balotasAlGanar ?: 0} balotas",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -216,6 +217,17 @@ private fun TarjetaPremio(estado: EstadoJuego, onNuevaPartida: () -> Unit) {
                 // En la llena, mostrar los premios que ya salieron
                 estado.premios.filter { it.ganado }.forEach { p ->
                     Text("✓ ${p.nombre}: ${p.ganadores.orEmpty()}", style = MaterialTheme.typography.bodyMedium)
+                }
+                val dinero = if (estado.esLlena) {
+                    "Premio: ${Dinero.formato(estado.valorPremio(premio))} · Recaudado: ${Dinero.formato(estado.recaudo)}"
+                } else "Recaudado: ${Dinero.formato(estado.recaudo)}"
+                Text("$dinero · ${estado.tablasPagadas.size} tablas en juego", style = MaterialTheme.typography.bodyMedium)
+                if (estado.tablasPagadas.isEmpty()) {
+                    Text(
+                        "Ninguna tabla pagada: registra los pagos en la pestaña Cobro para que la app revise ganadores.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         }

@@ -1,0 +1,362 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 5,
+    "identityHash": "2fd19e8c264ea68e2a3d730ba6cb4596",
+    "entities": [
+      {
+        "tableName": "tableros",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `numero` INTEGER NOT NULL, `cantidadTablas` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numero",
+            "columnName": "numero",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cantidadTablas",
+            "columnName": "cantidadTablas",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_tableros_numero",
+            "unique": true,
+            "columnNames": [
+              "numero"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_tableros_numero` ON `${TABLE_NAME}` (`numero`)"
+          }
+        ]
+      },
+      {
+        "tableName": "tablas",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `tableroId` INTEGER NOT NULL, `posicion` INTEGER NOT NULL, `numeros` TEXT NOT NULL, `fotoPath` TEXT, FOREIGN KEY(`tableroId`) REFERENCES `tableros`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tableroId",
+            "columnName": "tableroId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "posicion",
+            "columnName": "posicion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numeros",
+            "columnName": "numeros",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fotoPath",
+            "columnName": "fotoPath",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_tablas_tableroId_posicion",
+            "unique": true,
+            "columnNames": [
+              "tableroId",
+              "posicion"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_tablas_tableroId_posicion` ON `${TABLE_NAME}` (`tableroId`, `posicion`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "tableros",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "tableroId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "modos",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `nombre` TEXT NOT NULL, `figuras` TEXT NOT NULL, `usarEnSencillo` INTEGER NOT NULL DEFAULT 0, `cualquierPosicion` INTEGER NOT NULL DEFAULT 0)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nombre",
+            "columnName": "nombre",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "figuras",
+            "columnName": "figuras",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "usarEnSencillo",
+            "columnName": "usarEnSencillo",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "cualquierPosicion",
+            "columnName": "cualquierPosicion",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "partidas",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `fecha` INTEGER NOT NULL, `balotas` TEXT NOT NULL, `finalizada` INTEGER NOT NULL, `precioCuatroTablas` INTEGER NOT NULL DEFAULT 0)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fecha",
+            "columnName": "fecha",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "balotas",
+            "columnName": "balotas",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finalizada",
+            "columnName": "finalizada",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "precioCuatroTablas",
+            "columnName": "precioCuatroTablas",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "premios",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `partidaId` INTEGER NOT NULL, `orden` INTEGER NOT NULL, `nombre` TEXT NOT NULL, `modoIds` TEXT NOT NULL, `figuras` TEXT NOT NULL DEFAULT '', `porcentaje` INTEGER NOT NULL, `ganado` INTEGER NOT NULL, `balotasAlGanar` INTEGER, `ganadores` TEXT, FOREIGN KEY(`partidaId`) REFERENCES `partidas`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "partidaId",
+            "columnName": "partidaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orden",
+            "columnName": "orden",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nombre",
+            "columnName": "nombre",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modoIds",
+            "columnName": "modoIds",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "figuras",
+            "columnName": "figuras",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "porcentaje",
+            "columnName": "porcentaje",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ganado",
+            "columnName": "ganado",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "balotasAlGanar",
+            "columnName": "balotasAlGanar",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "ganadores",
+            "columnName": "ganadores",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_premios_partidaId",
+            "unique": false,
+            "columnNames": [
+              "partidaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_premios_partidaId` ON `${TABLE_NAME}` (`partidaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "partidas",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "partidaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "tablas_pagadas",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`partidaId` INTEGER NOT NULL, `tablaId` INTEGER NOT NULL, PRIMARY KEY(`partidaId`, `tablaId`), FOREIGN KEY(`partidaId`) REFERENCES `partidas`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`tablaId`) REFERENCES `tablas`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "partidaId",
+            "columnName": "partidaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tablaId",
+            "columnName": "tablaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "partidaId",
+            "tablaId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_tablas_pagadas_tablaId",
+            "unique": false,
+            "columnNames": [
+              "tablaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tablas_pagadas_tablaId` ON `${TABLE_NAME}` (`tablaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "partidas",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "partidaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "tablas",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "tablaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2fd19e8c264ea68e2a3d730ba6cb4596')"
+    ]
+  }
+}

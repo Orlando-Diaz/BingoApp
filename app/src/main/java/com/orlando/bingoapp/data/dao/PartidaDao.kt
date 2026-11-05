@@ -25,4 +25,7 @@ interface PartidaDao {
 
     @Query("SELECT * FROM partidas WHERE finalizada = 0 ORDER BY id DESC LIMIT 1")
     suspend fun obtenerActual(): Partida?
+
+    @Query("SELECT id FROM partidas WHERE finalizada = 1 ORDER BY id DESC LIMIT 1")
+    suspend fun ultimaFinalizadaId(): Long?
 }
