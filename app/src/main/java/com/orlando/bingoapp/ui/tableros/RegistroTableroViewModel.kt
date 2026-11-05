@@ -1,6 +1,7 @@
 package com.orlando.bingoapp.ui.tableros
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -8,12 +9,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.orlando.bingoapp.camara.LectorFotoTabla
 import com.orlando.bingoapp.data.BingoDatabase
 import com.orlando.bingoapp.data.entity.Tabla
 import com.orlando.bingoapp.data.entity.Tablero
 import com.orlando.bingoapp.domain.ReglasBingo
 import com.orlando.bingoapp.domain.ValidadorTabla
 import kotlinx.coroutines.launch
+import java.io.File
 
 enum class PasoRegistro { DATOS, TABLAS }
 
@@ -43,6 +46,23 @@ class RegistroTableroViewModel(application: Application) : AndroidViewModel(appl
     // Una lista de 25 textos por cada tabla del tablero
     private var tablas: List<SnapshotStateList<String>> = emptyList()
 
+    // ---------- Cámara ----------
+    private val lector = LectorFotoTabla(application)
+
+    /** Ruta de la foto de cada tabla (null si se escribió a mano). */
+    private var fotos: SnapshotStateList<String?> = mutableStateListOf()
+
+    /** Archivo donde la cámara está guardando la foto en este momento. */
+    private var fotoPendiente: File? = null
+
+    var leyendoFoto by mutableStateOf(false)
+        private set
+    var mensajeFoto by mutableStateOf<String?>(null)
+        private set
+
+    val fotoActual: String?
+        get() = fotos.getOrNull(tablaActual)
+
     val casillasActuales: SnapshotStateList<String>
         get() = tablas[tablaActual]
 
@@ -55,6 +75,8 @@ class RegistroTableroViewModel(application: Application) : AndroidViewModel(appl
         mostrarVacias = false
         guardado = false
         tablas = emptyList()
+        fotos = mutableStateListOf()
+        mensajeFoto = null
     }
 
     fun cambiarNumero(texto: String) {
@@ -80,6 +102,7 @@ class RegistroTableroViewModel(application: Application) : AndroidViewModel(appl
             // Solo se crean casillas nuevas si cambió la cantidad (para no borrar lo ya escrito)
             if (tablas.size != cantidadTablas) {
                 tablas = List(cantidadTablas) { mutableStateListOf(*Array(25) { "" }) }
+                fotos = mutableStateListOf(*arrayOfNulls<String>(cantidadTablas))
             }
             tablaActual = 0
             mensajeError = null
@@ -97,6 +120,45 @@ class RegistroTableroViewModel(application: Application) : AndroidViewModel(appl
         else ValidadorTabla.erroresVisibles(numeros)
     }
 
+    /** Prepara el archivo y devuelve la dirección que se le pasa a la cámara. */
+    fun prepararFoto(): Uri {
+        val archivo = lector.nuevoArchivo()
+        fotoPendiente = archivo
+        return lector.uriPara(archivo)
+    }
+
+    /** La cámara terminó: si tomó la foto, se leen los números y se llena la cuadrícula. */
+    fun fotoTomada(exito: Boolean) {
+        val archivo = fotoPendiente ?: return
+        fotoPendiente = null
+        if (!exito) return
+        val indiceTabla = tablaActual
+
+        viewModelScope.launch {
+            leyendoFoto = true
+            mensajeFoto = null
+            try {
+                val numeros = lector.leer(archivo)
+                val casillas = tablas[indiceTabla]
+                numeros.forEachIndexed { i, n ->
+                    if (i != ReglasBingo.INDICE_CENTRO) casillas[i] = n?.toString().orEmpty()
+                }
+                fotos[indiceTabla] = archivo.path
+                val leidos = numeros.count { it != null }
+                mostrarVacias = true
+                mensajeFoto = if (leidos == 24) {
+                    "Se leyeron los 24 números. Compáralos con la foto antes de seguir."
+                } else {
+                    "Se leyeron $leidos de 24. Completa las casillas en rojo mirando la foto."
+                }
+            } catch (e: Exception) {
+                mensajeFoto = "No se pudo leer la foto. Intenta de nuevo con más luz o escribe los números."
+            } finally {
+                leyendoFoto = false
+            }
+        }
+    }
+
     fun siguiente() {
         val errores = ValidadorTabla.errores(casillasActuales.map { it.toIntOrNull() })
         if (errores.isNotEmpty()) {
@@ -106,12 +168,14 @@ class RegistroTableroViewModel(application: Application) : AndroidViewModel(appl
         }
         mostrarVacias = false
         mensajeError = null
+        mensajeFoto = null
         if (tablaActual < cantidadTablas - 1) tablaActual++ else guardar()
     }
 
     fun anterior() {
         mostrarVacias = false
         mensajeError = null
+        mensajeFoto = null
         if (tablaActual > 0) tablaActual-- else paso = PasoRegistro.DATOS
     }
 
@@ -122,6 +186,7 @@ class RegistroTableroViewModel(application: Application) : AndroidViewModel(appl
             val tablasAGuardar = tablas.mapIndexed { i, casillas ->
                 Tabla(
                     posicion = i + 1,
+                    fotoPath = fotos.getOrNull(i),
                     numeros = casillas.mapIndexed { indice, texto ->
                         if (indice == ReglasBingo.INDICE_CENTRO) Tabla.CENTRO_LIBRE else texto.toInt()
                     }
@@ -130,5 +195,9 @@ class RegistroTableroViewModel(application: Application) : AndroidViewModel(appl
             dao.guardarTableroConTablas(tablero, tablasAGuardar)
             guardado = true
         }
+    }
+
+    override fun onCleared() {
+        lector.cerrar()
     }
 }
