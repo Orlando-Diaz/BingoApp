@@ -14,17 +14,20 @@ android {
         applicationId = "com.orlando.bingoapp"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
+            // Optimización de R8 desactivada: con packageScope limitado a androidx/kotlin
+            // dejaba clases de Kotlin inaccesibles y la app se cerraba al abrir
+            // (IllegalAccessError en ProcessLifecycleInitializer).
+            // El APK pesa un poco más, pero funciona igual que la versión de prueba.
             optimization {
-                enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+                enable = false
             }
         }
     }
