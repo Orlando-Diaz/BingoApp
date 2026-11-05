@@ -23,4 +23,12 @@ class Converters {
     @TypeConverter
     fun textoAFiguras(texto: String): List<String> =
         if (texto.isBlank()) emptyList() else texto.split(";")
+
+    // List<Long>  <->  "1,2,5"  (ids de modos en un premio)
+    @TypeConverter
+    fun idsATexto(ids: List<Long>): String = ids.joinToString(",")
+
+    @TypeConverter
+    fun textoAIds(texto: String): List<Long> =
+        if (texto.isBlank()) emptyList() else texto.split(",").map { it.toLong() }
 }

@@ -1,67 +1,205 @@
 package com.orlando.bingoapp.ui.juego
 
 import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.orlando.bingoapp.data.BingoDatabase
+import com.orlando.bingoapp.data.DatosIniciales
+import com.orlando.bingoapp.data.entity.Modo
 import com.orlando.bingoapp.data.entity.Partida
+import com.orlando.bingoapp.data.entity.Premio
+import com.orlando.bingoapp.domain.Figuras
+import com.orlando.bingoapp.domain.Ganador
+import com.orlando.bingoapp.domain.ModoEnJuego
+import com.orlando.bingoapp.domain.TablaEnJuego
+import com.orlando.bingoapp.domain.VerificadorGanadores
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/**
- * Maneja la partida en curso. Cada balota marcada se guarda de inmediato
- * en la base de datos, así que si se cierra la app no se pierde el juego.
- */
+/** Todo lo que la pantalla de juego necesita mostrar. */
+data class EstadoJuego(
+    val cargando: Boolean = true,
+    val partida: Partida? = null,
+    val premios: List<Premio> = emptyList(),
+    val modos: List<Modo> = emptyList(),
+    val posiblesGanadores: List<Ganador> = emptyList()
+) {
+    val balotas: List<Int> get() = partida?.balotas.orEmpty()
+    val premioActual: Premio? get() = premios.firstOrNull { !it.ganado }
+    val sinIniciar: Boolean get() = premios.isEmpty()
+    val terminada: Boolean get() = premios.isNotEmpty() && premioActual == null
+    val esLlena: Boolean get() = premios.size > 1
+
+    fun nombresModos(premio: Premio): List<String> =
+        premio.modoIds.mapNotNull { id -> modos.find { it.id == id }?.nombre }
+}
+
+/** Un premio intermedio de la llena, tal como se configura en el diálogo. */
+data class PremioIntermedio(val modo: Modo, val porcentaje: Int)
+
+data class TablaVerificada(val posicion: Int, val numeros: List<Int>, val ganadora: Ganador?)
+data class Verificacion(val numero: Int, val encontrado: Boolean, val tablas: List<TablaVerificada>)
+
 class JuegoViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val dao = BingoDatabase.obtener(application).partidaDao()
+    private val db = BingoDatabase.obtener(application)
+    private val partidaDao = db.partidaDao()
+    private val premioDao = db.premioDao()
+    private val modoDao = db.modoDao()
+    private val tableroDao = db.tableroDao()
 
-    /**
-     * Evita que dos toques muy rápidos se pisen entre sí
-     * (algo parecido a un bloque synchronized en Java, pero para corrutinas).
-     */
+    /** Evita que dos toques muy rápidos se pisen (como synchronized, pero para corrutinas). */
     private val candado = Mutex()
 
-    val partida: StateFlow<Partida?> = dao.observarActual()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    /**
+     * combine junta tres fuentes "vivas": la partida, los tableros y los modos.
+     * Cada vez que cualquiera cambia (por ejemplo, se marca una balota),
+     * se recalcula quién va ganando. Se hace en segundo plano (Dispatchers.Default).
+     */
+    val estado: StateFlow<EstadoJuego> = combine(
+        partidaDao.observarActualConPremios(),
+        tableroDao.obtenerTodos(),
+        modoDao.obtenerTodos()
+    ) { actual, tableros, modos ->
+        val partida = actual?.partida
+        val premios = actual?.premios.orEmpty().sortedBy { it.orden }
+        val premioActual = premios.firstOrNull { !it.ganado }
+
+        val ganadores = if (partida != null && premioActual != null) {
+            val tablas = tableros.flatMap { t ->
+                t.tablas.map { TablaEnJuego(t.tablero.numero, it.posicion, it.numeros) }
+            }
+            VerificadorGanadores.buscarGanadores(
+                tablas,
+                modosDelPremio(premioActual, modos),
+                partida.balotas.toSet()
+            )
+        } else emptyList()
+
+        EstadoJuego(cargando = false, partida, premios, modos, ganadores)
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EstadoJuego())
+
+    /** Resultado de "Verificar tablero" (null = diálogo cerrado). */
+    var verificacion by mutableStateOf<Verificacion?>(null)
+        private set
 
     init {
-        // Si no hay partida en curso (primera vez), se crea una
+        viewModelScope.launch { DatosIniciales.cargarSiHaceFalta(db) }
+    }
+
+    // ---------- Balotas ----------
+
+    fun marcar(balota: Int) = modificarBalotas { if (balota in it) it else it + balota }
+
+    fun quitar(balota: Int) = modificarBalotas { it - balota }
+
+    fun deshacerUltima() = modificarBalotas { it.dropLast(1) }
+
+    private fun modificarBalotas(cambio: (List<Int>) -> List<Int>) {
         viewModelScope.launch {
             candado.withLock {
-                if (dao.obtenerActual() == null) dao.insertar(Partida())
+                val actual = partidaDao.obtenerActual() ?: return@withLock
+                partidaDao.actualizar(actual.copy(balotas = cambio(actual.balotas)))
             }
         }
     }
 
-    fun marcar(balota: Int) = modificar { balotas ->
-        if (balota in balotas) balotas else balotas + balota
-    }
+    // ---------- Partidas ----------
 
-    fun quitar(balota: Int) = modificar { balotas -> balotas - balota }
-
-    fun deshacerUltima() = modificar { balotas -> balotas.dropLast(1) }
-
-    fun nuevaPartida() {
+    fun iniciarSencillo() {
         viewModelScope.launch {
             candado.withLock {
-                dao.obtenerActual()?.let { dao.actualizar(it.copy(finalizada = true)) }
-                dao.insertar(Partida())
+                val ids = modoDao.obtenerLista().filter { it.usarEnSencillo }.map { it.id }
+                crearPartida(listOf(Premio(orden = 1, nombre = "Sencillo", modoIds = ids, porcentaje = 100)))
             }
         }
     }
 
-    /** Lee la partida actual, le aplica el cambio a sus balotas y la guarda. */
-    private fun modificar(cambio: (List<Int>) -> List<Int>) {
+    fun iniciarLlena(intermedios: List<PremioIntermedio>) {
         viewModelScope.launch {
             candado.withLock {
-                val actual = dao.obtenerActual() ?: return@withLock
-                dao.actualizar(actual.copy(balotas = cambio(actual.balotas)))
+                val lleno = modoDao.obtenerLista().firstOrNull { it.nombre == Figuras.NOMBRE_LLENO }
+                    ?: return@withLock
+                val premios = intermedios.mapIndexed { i, p ->
+                    Premio(orden = i + 1, nombre = p.modo.nombre, modoIds = listOf(p.modo.id), porcentaje = p.porcentaje)
+                } + Premio(
+                    orden = intermedios.size + 1,
+                    nombre = Figuras.NOMBRE_LLENO,
+                    modoIds = listOf(lleno.id),
+                    porcentaje = 100 - intermedios.sumOf { it.porcentaje }
+                )
+                crearPartida(premios)
             }
         }
     }
+
+    /** Cierra la partida actual (si hay) y crea una nueva con sus premios. */
+    private suspend fun crearPartida(premios: List<Premio>) {
+        partidaDao.obtenerActual()?.let { partidaDao.actualizar(it.copy(finalizada = true)) }
+        val partidaId = partidaDao.insertar(Partida())
+        premioDao.insertarTodos(premios.map { it.copy(partidaId = partidaId) })
+    }
+
+    /**
+     * Marca como ganado el premio en juego con los ganadores actuales.
+     * En la llena, el juego sigue con el siguiente premio y las mismas balotas.
+     */
+    fun confirmarGanadores() {
+        viewModelScope.launch {
+            candado.withLock {
+                val e = estado.value
+                val premio = e.premioActual ?: return@withLock
+                if (e.posiblesGanadores.isEmpty()) return@withLock
+                premioDao.actualizar(
+                    premio.copy(
+                        ganado = true,
+                        balotasAlGanar = e.balotas.size,
+                        ganadores = e.posiblesGanadores.joinToString(", ") { it.descripcion }
+                    )
+                )
+            }
+        }
+    }
+
+    // ---------- Verificar un tablero ----------
+
+    fun verificarTablero(numero: Int) {
+        viewModelScope.launch {
+            val e = estado.value
+            val tablero = tableroDao.buscarPorNumero(numero)
+            val premio = e.premioActual
+            val modos = if (premio != null) modosDelPremio(premio, e.modos) else emptyList()
+            val balotas = e.balotas.toSet()
+
+            verificacion = if (tablero == null) {
+                Verificacion(numero, encontrado = false, tablas = emptyList())
+            } else {
+                Verificacion(numero, encontrado = true, tablas = tablero.tablas.sortedBy { it.posicion }.map { tabla ->
+                    val ganadora = VerificadorGanadores.buscarGanadores(
+                        listOf(TablaEnJuego(numero, tabla.posicion, tabla.numeros)), modos, balotas
+                    ).firstOrNull()
+                    TablaVerificada(tabla.posicion, tabla.numeros, ganadora)
+                })
+            }
+        }
+    }
+
+    fun cerrarVerificacion() {
+        verificacion = null
+    }
+
+    private fun modosDelPremio(premio: Premio, modos: List<Modo>): List<ModoEnJuego> =
+        modos.filter { it.id in premio.modoIds }.map { ModoEnJuego(it.nombre, it.figuras) }
 }

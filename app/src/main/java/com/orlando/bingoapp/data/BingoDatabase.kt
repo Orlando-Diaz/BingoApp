@@ -1,6 +1,7 @@
 package com.orlando.bingoapp.data
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -9,16 +10,21 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.orlando.bingoapp.data.dao.ModoDao
 import com.orlando.bingoapp.data.dao.PartidaDao
+import com.orlando.bingoapp.data.dao.PremioDao
 import com.orlando.bingoapp.data.dao.TableroDao
 import com.orlando.bingoapp.data.entity.Modo
 import com.orlando.bingoapp.data.entity.Partida
+import com.orlando.bingoapp.data.entity.Premio
 import com.orlando.bingoapp.data.entity.Tabla
 import com.orlando.bingoapp.data.entity.Tablero
 
 @Database(
-    entities = [Tablero::class, Tabla::class, Modo::class, Partida::class],
-    version = 2,
-    exportSchema = true
+    entities = [Tablero::class, Tabla::class, Modo::class, Partida::class, Premio::class],
+    version = 3,
+    exportSchema = true,
+    // 2 -> 3: tabla de premios y columna usarEnSencillo en modos.
+    // Room compara schemas/2.json con el código nuevo y genera la migración solo.
+    autoMigrations = [AutoMigration(from = 2, to = 3)]
 )
 @TypeConverters(Converters::class)
 abstract class BingoDatabase : RoomDatabase() {
@@ -26,6 +32,7 @@ abstract class BingoDatabase : RoomDatabase() {
     abstract fun tableroDao(): TableroDao
     abstract fun modoDao(): ModoDao
     abstract fun partidaDao(): PartidaDao
+    abstract fun premioDao(): PremioDao
 
     companion object {
         @Volatile

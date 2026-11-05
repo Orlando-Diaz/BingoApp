@@ -41,11 +41,13 @@ import com.orlando.bingoapp.domain.ReglasBingo
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JuegoScreen(viewModel: JuegoViewModel = viewModel()) {
-    val partida by viewModel.partida.collectAsStateWithLifecycle()
-    val balotas = partida?.balotas.orEmpty()
+    val estado by viewModel.estado.collectAsStateWithLifecycle()
+    val balotas = estado.balotas
 
     var balotaAQuitar by remember { mutableStateOf<Int?>(null) }
-    var confirmarNueva by remember { mutableStateOf(false) }
+    var elegirTipo by remember { mutableStateOf(false) }
+    var configurarLlena by remember { mutableStateOf(false) }
+    var verificando by remember { mutableStateOf(false) }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Juego") }) }) { padding ->
         Column(
@@ -56,28 +58,46 @@ fun JuegoScreen(viewModel: JuegoViewModel = viewModel()) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            UltimaBalota(balotas)
-            UltimasCantadas(balotas)
+            when {
+                estado.cargando -> {}
+                estado.sinIniciar -> InicioPartida(
+                    onSencillo = viewModel::iniciarSencillo,
+                    onLlena = { configurarLlena = true }
+                )
+                else -> {
+                    TarjetaPremio(estado, onNuevaPartida = { elegirTipo = true })
+                    if (estado.posiblesGanadores.isNotEmpty()) {
+                        TarjetaGanadores(estado, onConfirmar = viewModel::confirmarGanadores)
+                    }
+                    UltimaBalota(balotas)
+                    UltimasCantadas(balotas)
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(
-                    onClick = viewModel::deshacerUltima,
-                    enabled = balotas.isNotEmpty(),
-                    modifier = Modifier.weight(1f)
-                ) { Text("Deshacer última") }
-                Button(
-                    onClick = { confirmarNueva = true },
-                    modifier = Modifier.weight(1f)
-                ) { Text("Nueva partida") }
-            }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = viewModel::deshacerUltima,
+                            enabled = balotas.isNotEmpty() && !estado.terminada,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Deshacer") }
+                        OutlinedButton(
+                            onClick = { verificando = true },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Verificar") }
+                        Button(
+                            onClick = { elegirTipo = true },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Nueva") }
+                    }
 
-            TableroBalotas(
-                balotas = balotas,
-                onToque = { balota ->
-                    // Si no está marcada, se marca. Si ya está, se pregunta antes de quitarla.
-                    if (balota in balotas) balotaAQuitar = balota else viewModel.marcar(balota)
+                    TableroBalotas(
+                        balotas = balotas,
+                        habilitado = !estado.terminada,
+                        onToque = { balota ->
+                            // Si no está marcada, se marca. Si ya está, se pregunta antes de quitarla.
+                            if (balota in balotas) balotaAQuitar = balota else viewModel.marcar(balota)
+                        }
+                    )
                 }
-            )
+            }
         }
     }
 
@@ -96,19 +116,128 @@ fun JuegoScreen(viewModel: JuegoViewModel = viewModel()) {
         )
     }
 
-    if (confirmarNueva) {
-        AlertDialog(
-            onDismissRequest = { confirmarNueva = false },
-            title = { Text("¿Empezar una partida nueva?") },
-            text = { Text("Se limpian las ${balotas.size} balotas cantadas.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.nuevaPartida()
-                    confirmarNueva = false
-                }) { Text("Empezar") }
+    if (elegirTipo) {
+        DialogoNuevaPartida(
+            onSencillo = {
+                viewModel.iniciarSencillo()
+                elegirTipo = false
             },
-            dismissButton = { TextButton(onClick = { confirmarNueva = false }) { Text("Cancelar") } }
+            onLlena = {
+                elegirTipo = false
+                configurarLlena = true
+            },
+            onCancelar = { elegirTipo = false }
         )
+    }
+
+    if (configurarLlena) {
+        DialogoConfigurarLlena(
+            modos = estado.modos,
+            onIniciar = { intermedios ->
+                viewModel.iniciarLlena(intermedios)
+                configurarLlena = false
+            },
+            onCancelar = { configurarLlena = false }
+        )
+    }
+
+    if (verificando) {
+        DialogoVerificarTablero(
+            verificacion = viewModel.verificacion,
+            balotas = balotas.toSet(),
+            onBuscar = viewModel::verificarTablero,
+            onCerrar = {
+                verificando = false
+                viewModel.cerrarVerificacion()
+            }
+        )
+    }
+}
+
+/** Cuando no hay partida en curso: elegir qué se va a jugar. */
+@Composable
+private fun InicioPartida(onSencillo: () -> Unit, onLlena: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("¿Qué se va a jugar?", style = MaterialTheme.typography.headlineSmall)
+            Button(onClick = onSencillo, modifier = Modifier.fillMaxWidth()) { Text("Sencillo", fontSize = 18.sp) }
+            Button(onClick = onLlena, modifier = Modifier.fillMaxWidth()) { Text("Llena (con premios)", fontSize = 18.sp) }
+        }
+    }
+}
+
+/** Qué premio está en juego, o el resumen si la partida terminó. */
+@Composable
+private fun TarjetaPremio(estado: EstadoJuego, onNuevaPartida: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            val premio = estado.premioActual
+            if (premio == null) {
+                Text("Partida terminada", style = MaterialTheme.typography.titleLarge)
+                estado.premios.forEach { p ->
+                    Text(
+                        "${p.nombre} (${p.porcentaje}%): ${p.ganadores.orEmpty()} — con ${p.balotasAlGanar ?: 0} balotas",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                Button(onClick = onNuevaPartida, modifier = Modifier.fillMaxWidth()) { Text("Nueva partida") }
+            } else {
+                val titulo = if (estado.esLlena) {
+                    "Llena · premio ${premio.orden} de ${estado.premios.size}: ${premio.nombre} (${premio.porcentaje}%)"
+                } else "Sencillo"
+                Text(titulo, style = MaterialTheme.typography.titleLarge)
+                if (!estado.esLlena) {
+                    Text("Vale: " + estado.nombresModos(premio).joinToString(", "), style = MaterialTheme.typography.bodyMedium)
+                }
+                // En la llena, mostrar los premios que ya salieron
+                estado.premios.filter { it.ganado }.forEach { p ->
+                    Text("✓ ${p.nombre}: ${p.ganadores.orEmpty()}", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
+/** Aviso grande cuando una o varias tablas completaron la figura del premio. */
+@Composable
+private fun TarjetaGanadores(estado: EstadoJuego, onConfirmar: () -> Unit) {
+    val ganadores = estado.posiblesGanadores
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                if (ganadores.size == 1) "¡Posible ganador!" else "¡${ganadores.size} posibles ganadores! Se divide el premio",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            ganadores.forEach {
+                Text(
+                    "${it.descripcion} — ${it.nombreModo}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
+            Text(
+                "Confirma cuando el jugador cante bingo. Si nadie lo canta, sigue marcando balotas.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            Button(onClick = onConfirmar, modifier = Modifier.fillMaxWidth()) {
+                Text(if (estado.esLlena && estado.premioActual?.orden != estado.premios.size) "Confirmar y seguir jugando" else "Confirmar ganador")
+            }
+        }
     }
 }
 
@@ -166,7 +295,7 @@ private fun UltimasCantadas(balotas: List<Int>) {
  * luminoso de un bingo. Las marcadas se pintan; la última se resalta.
  */
 @Composable
-private fun TableroBalotas(balotas: List<Int>, onToque: (Int) -> Unit) {
+private fun TableroBalotas(balotas: List<Int>, habilitado: Boolean, onToque: (Int) -> Unit) {
     val marcadas = balotas.toSet()
     val ultima = balotas.lastOrNull()
     val colores = MaterialTheme.colorScheme
@@ -193,7 +322,7 @@ private fun TableroBalotas(balotas: List<Int>, onToque: (Int) -> Unit) {
                             .fillMaxWidth()
                             .height(46.dp)
                             .background(fondo, RoundedCornerShape(10.dp))
-                            .clickable { onToque(balota) },
+                            .clickable(enabled = habilitado) { onToque(balota) },
                         contentAlignment = Alignment.Center
                     ) {
                         Text("$balota", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = texto)
