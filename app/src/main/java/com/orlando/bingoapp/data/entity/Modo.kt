@@ -5,18 +5,22 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 /**
- * Un modo de juego (cartón lleno, letra L, línea, 4 esquinas...).
+ * Una jugada para ganar en los sencillos (4 esquinas, cuadrito, línea...).
+ * Las crean y editan tus papás desde la pestaña "Jugadas".
  *
  * figuras: cada figura es un texto de 25 caracteres '1'/'0', fila por fila.
- * '1' = la casilla hay que completarla. Un modo puede tener varias figuras
- * (por ejemplo "Línea horizontal" tiene 5) y se gana completando CUALQUIERA de ellas.
+ * Se gana completando CUALQUIERA de ellas.
  *
- * usarEnSencillo: si este modo vale para ganar en las partidas sencillas.
+ * cualquierPosicion: si es true, cada figura vale en cualquier parte de la tabla
+ * (un cuadrito dibujado una vez vale en las 16 posiciones).
+ *
+ * usarEnSencillo: columna de la versión 3; ya no se usa (todas las jugadas valen en el sencillo).
  */
 @Entity(tableName = "modos")
 data class Modo(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val nombre: String,
     val figuras: List<String>,
-    @ColumnInfo(defaultValue = "0") val usarEnSencillo: Boolean = false
+    @ColumnInfo(defaultValue = "0") val usarEnSencillo: Boolean = true,
+    @ColumnInfo(defaultValue = "0") val cualquierPosicion: Boolean = false
 )

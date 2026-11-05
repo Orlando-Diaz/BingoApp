@@ -1,5 +1,6 @@
 package com.orlando.bingoapp.data.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -7,8 +8,8 @@ import androidx.room.PrimaryKey
 
 /**
  * Un premio dentro de una partida.
- * - Sencillo: un solo premio que acepta varios modos (4 esquinas, líneas...).
- * - Llena: premios intermedios con porcentaje y al final el cartón lleno.
+ * - Sencillo: un solo premio, sin figuras propias: valen todas las jugadas de la pestaña "Jugadas".
+ * - Llena: premios intermedios con la figura que se dibujó al iniciar, y al final el cartón lleno.
  *
  * Se juegan en orden: el premio en juego es el primero que no se ha ganado.
  */
@@ -29,7 +30,8 @@ data class Premio(
     val partidaId: Long = 0,
     val orden: Int,
     val nombre: String,
-    val modoIds: List<Long>,
+    val modoIds: List<Long> = emptyList(), // versión 3; ya no se usa
+    @ColumnInfo(defaultValue = "") val figuras: List<String> = emptyList(),
     val porcentaje: Int,
     val ganado: Boolean = false,
     val balotasAlGanar: Int? = null, // con cuántas balotas cantadas se ganó

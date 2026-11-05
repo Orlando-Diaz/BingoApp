@@ -48,6 +48,16 @@ fun JuegoScreen(viewModel: JuegoViewModel = viewModel()) {
     var elegirTipo by remember { mutableStateOf(false) }
     var configurarLlena by remember { mutableStateOf(false) }
     var verificando by remember { mutableStateOf(false) }
+    var sinJugadas by remember { mutableStateOf(false) }
+
+    // El sencillo necesita al menos una jugada creada en la pestaña "Jugadas"
+    val iniciarSencillo: () -> Unit = {
+        if (estado.modos.isEmpty()) {
+            sinJugadas = true
+        } else {
+            viewModel.iniciarSencillo()
+        }
+    }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Juego") }) }) { padding ->
         Column(
@@ -61,7 +71,7 @@ fun JuegoScreen(viewModel: JuegoViewModel = viewModel()) {
             when {
                 estado.cargando -> {}
                 estado.sinIniciar -> InicioPartida(
-                    onSencillo = viewModel::iniciarSencillo,
+                    onSencillo = iniciarSencillo,
                     onLlena = { configurarLlena = true }
                 )
                 else -> {
@@ -119,8 +129,8 @@ fun JuegoScreen(viewModel: JuegoViewModel = viewModel()) {
     if (elegirTipo) {
         DialogoNuevaPartida(
             onSencillo = {
-                viewModel.iniciarSencillo()
                 elegirTipo = false
+                iniciarSencillo()
             },
             onLlena = {
                 elegirTipo = false
@@ -132,12 +142,20 @@ fun JuegoScreen(viewModel: JuegoViewModel = viewModel()) {
 
     if (configurarLlena) {
         DialogoConfigurarLlena(
-            modos = estado.modos,
             onIniciar = { intermedios ->
                 viewModel.iniciarLlena(intermedios)
                 configurarLlena = false
             },
             onCancelar = { configurarLlena = false }
+        )
+    }
+
+    if (sinJugadas) {
+        AlertDialog(
+            onDismissRequest = { sinJugadas = false },
+            title = { Text("No hay jugadas para los sencillos") },
+            text = { Text("Primero agrega las formas de ganar en la pestaña \"Jugadas\".") },
+            confirmButton = { TextButton(onClick = { sinJugadas = false }) { Text("Entendido") } }
         )
     }
 

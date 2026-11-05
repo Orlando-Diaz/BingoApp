@@ -20,6 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.orlando.bingoapp.ui.juego.JuegoScreen
+import com.orlando.bingoapp.ui.jugadas.EditorJugadaScreen
+import com.orlando.bingoapp.ui.jugadas.EditorJugadaViewModel
+import com.orlando.bingoapp.ui.jugadas.JugadasScreen
 import com.orlando.bingoapp.ui.tableros.ListaTablerosScreen
 import com.orlando.bingoapp.ui.tableros.RegistroTableroScreen
 import com.orlando.bingoapp.ui.tableros.RegistroTableroViewModel
@@ -37,21 +40,32 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Pantalla { JUEGO, LISTA_TABLEROS, REGISTRO_TABLERO }
+private enum class Pantalla { JUEGO, LISTA_TABLEROS, REGISTRO_TABLERO, JUGADAS, EDITOR_JUGADA }
 
 /** Navegación simple entre pantallas. Cuando haya más, pasamos a Navigation Compose. */
 @Composable
 fun BingoApp() {
     var pantalla by rememberSaveable { mutableStateOf(Pantalla.JUEGO) }
     val registroViewModel: RegistroTableroViewModel = viewModel()
+    val editorJugadaViewModel: EditorJugadaViewModel = viewModel()
 
-    // El registro de tableros ocupa toda la pantalla (sin barra inferior)
-    if (pantalla == Pantalla.REGISTRO_TABLERO) {
-        RegistroTableroScreen(
-            viewModel = registroViewModel,
-            onSalir = { pantalla = Pantalla.LISTA_TABLEROS }
-        )
-        return
+    // Pantallas de formulario: ocupan toda la pantalla (sin barra inferior)
+    when (pantalla) {
+        Pantalla.REGISTRO_TABLERO -> {
+            RegistroTableroScreen(
+                viewModel = registroViewModel,
+                onSalir = { pantalla = Pantalla.LISTA_TABLEROS }
+            )
+            return
+        }
+        Pantalla.EDITOR_JUGADA -> {
+            EditorJugadaScreen(
+                viewModel = editorJugadaViewModel,
+                onSalir = { pantalla = Pantalla.JUGADAS }
+            )
+            return
+        }
+        else -> {}
     }
 
     Scaffold(
@@ -69,19 +83,35 @@ fun BingoApp() {
                     icon = { Text("📋", fontSize = 22.sp) },
                     label = { Text("Tableros") }
                 )
+                NavigationBarItem(
+                    selected = pantalla == Pantalla.JUGADAS,
+                    onClick = { pantalla = Pantalla.JUGADAS },
+                    icon = { Text("⭐", fontSize = 22.sp) },
+                    label = { Text("Jugadas") }
+                )
             }
         }
     ) { padding ->
         // consumeWindowInsets evita que las pantallas internas dupliquen los márgenes del sistema
         Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
             when (pantalla) {
-                Pantalla.JUEGO -> JuegoScreen()
-                else -> ListaTablerosScreen(
+                Pantalla.LISTA_TABLEROS -> ListaTablerosScreen(
                     onNuevoTablero = {
                         registroViewModel.reiniciar()
                         pantalla = Pantalla.REGISTRO_TABLERO
                     }
                 )
+                Pantalla.JUGADAS -> JugadasScreen(
+                    onNueva = {
+                        editorJugadaViewModel.cargar(null)
+                        pantalla = Pantalla.EDITOR_JUGADA
+                    },
+                    onEditar = { jugada ->
+                        editorJugadaViewModel.cargar(jugada)
+                        pantalla = Pantalla.EDITOR_JUGADA
+                    }
+                )
+                else -> JuegoScreen()
             }
         }
     }

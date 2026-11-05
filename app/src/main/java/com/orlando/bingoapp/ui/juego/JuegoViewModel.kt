@@ -7,7 +7,6 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.orlando.bingoapp.data.BingoDatabase
-import com.orlando.bingoapp.data.DatosIniciales
 import com.orlando.bingoapp.data.entity.Modo
 import com.orlando.bingoapp.data.entity.Partida
 import com.orlando.bingoapp.data.entity.Premio
@@ -40,12 +39,13 @@ data class EstadoJuego(
     val terminada: Boolean get() = premios.isNotEmpty() && premioActual == null
     val esLlena: Boolean get() = premios.size > 1
 
+    /** En el sencillo valen todas las jugadas; en la llena, la figura de cada premio. */
     fun nombresModos(premio: Premio): List<String> =
-        premio.modoIds.mapNotNull { id -> modos.find { it.id == id }?.nombre }
+        if (premio.figuras.isEmpty()) modos.map { it.nombre } else listOf(premio.nombre)
 }
 
-/** Un premio intermedio de la llena, tal como se configura en el diálogo. */
-data class PremioIntermedio(val modo: Modo, val porcentaje: Int)
+/** Un premio intermedio de la llena: la figura se dibuja al iniciar la partida. */
+data class PremioIntermedio(val nombre: String, val figura: String, val porcentaje: Int)
 
 data class TablaVerificada(val posicion: Int, val numeros: List<Int>, val ganadora: Ganador?)
 data class Verificacion(val numero: Int, val encontrado: Boolean, val tablas: List<TablaVerificada>)
@@ -95,10 +95,6 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     var verificacion by mutableStateOf<Verificacion?>(null)
         private set
 
-    init {
-        viewModelScope.launch { DatosIniciales.cargarSiHaceFalta(db) }
-    }
-
     // ---------- Balotas ----------
 
     fun marcar(balota: Int) = modificarBalotas { if (balota in it) it else it + balota }
@@ -121,8 +117,8 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     fun iniciarSencillo() {
         viewModelScope.launch {
             candado.withLock {
-                val ids = modoDao.obtenerLista().filter { it.usarEnSencillo }.map { it.id }
-                crearPartida(listOf(Premio(orden = 1, nombre = "Sencillo", modoIds = ids, porcentaje = 100)))
+                // Sin figuras propias: el sencillo usa las jugadas de la pestaña "Jugadas"
+                crearPartida(listOf(Premio(orden = 1, nombre = "Sencillo", porcentaje = 100)))
             }
         }
     }
@@ -130,14 +126,12 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     fun iniciarLlena(intermedios: List<PremioIntermedio>) {
         viewModelScope.launch {
             candado.withLock {
-                val lleno = modoDao.obtenerLista().firstOrNull { it.nombre == Figuras.NOMBRE_LLENO }
-                    ?: return@withLock
                 val premios = intermedios.mapIndexed { i, p ->
-                    Premio(orden = i + 1, nombre = p.modo.nombre, modoIds = listOf(p.modo.id), porcentaje = p.porcentaje)
+                    Premio(orden = i + 1, nombre = p.nombre, figuras = listOf(p.figura), porcentaje = p.porcentaje)
                 } + Premio(
                     orden = intermedios.size + 1,
                     nombre = Figuras.NOMBRE_LLENO,
-                    modoIds = listOf(lleno.id),
+                    figuras = Figuras.LLENO,
                     porcentaje = 100 - intermedios.sumOf { it.porcentaje }
                 )
                 crearPartida(premios)
@@ -200,6 +194,15 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
         verificacion = null
     }
 
+    /**
+     * Qué figuras se revisan para un premio:
+     * - Llena: las figuras guardadas en el premio.
+     * - Sencillo: todas las jugadas, expandidas si valen en cualquier posición.
+     */
     private fun modosDelPremio(premio: Premio, modos: List<Modo>): List<ModoEnJuego> =
-        modos.filter { it.id in premio.modoIds }.map { ModoEnJuego(it.nombre, it.figuras) }
+        if (premio.figuras.isNotEmpty()) {
+            listOf(ModoEnJuego(premio.nombre, premio.figuras))
+        } else {
+            modos.map { ModoEnJuego(it.nombre, Figuras.expandir(it.figuras, it.cualquierPosicion)) }
+        }
 }

@@ -45,4 +45,32 @@ object Figuras {
     val MARCO = listOf(dibujo("XXXXX", "X...X", "X...X", "X...X", "XXXXX"))
 
     const val NOMBRE_LLENO = "Cartón lleno"
+    val VACIA = "0".repeat(25)
+
+    fun cantidadCasillas(figura: String): Int = figura.count { it == '1' }
+
+    /**
+     * Todas las posiciones donde cabe la figura moviéndola por la tabla.
+     * Ej: un cuadrito 2x2 dibujado arriba a la izquierda -> los 16 cuadritos posibles.
+     *     una fila completa -> las 5 filas.
+     */
+    fun traslaciones(figura: String): List<String> {
+        val celdas = figura.indices.filter { figura[it] == '1' }.map { it / 5 to it % 5 }
+        if (celdas.isEmpty()) return listOf(figura)
+
+        val minFila = celdas.minOf { it.first }
+        val maxFila = celdas.maxOf { it.first }
+        val minCol = celdas.minOf { it.second }
+        val maxCol = celdas.maxOf { it.second }
+
+        return (-minFila..(4 - maxFila)).flatMap { df ->
+            (-minCol..(4 - maxCol)).map { dc ->
+                conIndices(celdas.map { (f, c) -> (f + df) * 5 + (c + dc) })
+            }
+        }.distinct()
+    }
+
+    /** Las figuras que realmente se revisan al verificar una jugada. */
+    fun expandir(figuras: List<String>, cualquierPosicion: Boolean): List<String> =
+        if (cualquierPosicion) figuras.flatMap { traslaciones(it) }.distinct() else figuras
 }

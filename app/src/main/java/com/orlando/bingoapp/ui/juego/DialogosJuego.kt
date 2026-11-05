@@ -2,8 +2,6 @@ package com.orlando.bingoapp.ui.juego
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
@@ -12,7 +10,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -28,8 +25,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.orlando.bingoapp.data.entity.Modo
 import com.orlando.bingoapp.domain.Figuras
+import com.orlando.bingoapp.ui.jugadas.FiguraEditable
+import com.orlando.bingoapp.ui.jugadas.alternarCasilla
 
 /** Elegir si la nueva partida es sencillo o llena. */
 @Composable
@@ -53,24 +51,22 @@ fun DialogoNuevaPartida(
 }
 
 /** Un premio intermedio mientras se está configurando. */
-private class PremioEnEdicion {
-    var modo by mutableStateOf<Modo?>(null)
+private class PremioEnEdicion(numero: Int) {
+    var nombre by mutableStateOf("Premio $numero")
+    var figura by mutableStateOf(Figuras.VACIA)
     var porcentajeTexto by mutableStateOf("")
 }
 
 /**
- * Configurar la llena: 1 o 2 premios intermedios (figura + porcentaje).
- * El cartón lleno se lleva lo que sobre.
+ * Configurar la llena: 1 o 2 premios intermedios. Para cada uno se DIBUJA
+ * la figura en ese momento y se pone el porcentaje. El cartón lleno se lleva lo que sobre.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DialogoConfigurarLlena(
-    modos: List<Modo>,
     onIniciar: (List<PremioIntermedio>) -> Unit,
     onCancelar: () -> Unit
 ) {
-    val opciones = modos.filter { it.nombre != Figuras.NOMBRE_LLENO }
-    val premios = remember { mutableStateListOf(PremioEnEdicion()) }
+    val premios = remember { mutableStateListOf(PremioEnEdicion(1)) }
     var error by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -81,17 +77,20 @@ fun DialogoConfigurarLlena(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                premios.forEachIndexed { i, premio ->
-                    Text("Premio ${i + 1}", style = MaterialTheme.typography.titleMedium)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        opciones.forEach { modo ->
-                            FilterChip(
-                                selected = premio.modo?.id == modo.id,
-                                onClick = { premio.modo = modo },
-                                label = { Text(modo.nombre) }
-                            )
-                        }
-                    }
+                premios.forEach { premio ->
+                    OutlinedTextField(
+                        value = premio.nombre,
+                        onValueChange = { premio.nombre = it.take(30) },
+                        label = { Text("Nombre (ej: La X)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("Toca las casillas para dibujar la figura", style = MaterialTheme.typography.bodySmall)
+                    FiguraEditable(
+                        figura = premio.figura,
+                        onToque = { premio.figura = alternarCasilla(premio.figura, it) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     OutlinedTextField(
                         value = premio.porcentajeTexto,
                         onValueChange = { premio.porcentajeTexto = it.filter(Char::isDigit).take(2) },
@@ -105,7 +104,7 @@ fun DialogoConfigurarLlena(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (premios.size < 2) {
-                        OutlinedButton(onClick = { premios.add(PremioEnEdicion()) }) { Text("+ Otro premio") }
+                        OutlinedButton(onClick = { premios.add(PremioEnEdicion(premios.size + 1)) }) { Text("+ Otro premio") }
                     }
                     if (premios.size > 1) {
                         OutlinedButton(onClick = { premios.removeAt(premios.lastIndex) }) { Text("Quitar último") }
@@ -113,10 +112,7 @@ fun DialogoConfigurarLlena(
                 }
 
                 val suma = premios.sumOf { it.porcentajeTexto.toIntOrNull() ?: 0 }
-                Text(
-                    "Cartón lleno: ${100 - suma}% del premio",
-                    style = MaterialTheme.typography.titleMedium
-                )
+                Text("Cartón lleno: ${100 - suma}% del premio", style = MaterialTheme.typography.titleMedium)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -124,13 +120,16 @@ fun DialogoConfigurarLlena(
             TextButton(onClick = {
                 val porcentajes = premios.map { it.porcentajeTexto.toIntOrNull() ?: 0 }
                 error = when {
-                    premios.any { it.modo == null } -> "Elige la figura de cada premio"
+                    premios.any { it.nombre.isBlank() } -> "Ponle nombre a cada premio"
+                    premios.any { Figuras.cantidadCasillas(it.figura) == 0 } -> "Dibuja la figura de cada premio"
                     porcentajes.any { it <= 0 } -> "Escribe el porcentaje de cada premio"
                     porcentajes.sum() >= 100 -> "Los premios suman 100% o más: no queda nada para el lleno"
                     else -> null
                 }
                 if (error == null) {
-                    onIniciar(premios.map { PremioIntermedio(it.modo!!, it.porcentajeTexto.toInt()) })
+                    onIniciar(premios.map {
+                        PremioIntermedio(it.nombre.trim(), it.figura, it.porcentajeTexto.toInt())
+                    })
                 }
             }) { Text("Iniciar") }
         },

@@ -20,11 +20,15 @@ import com.orlando.bingoapp.data.entity.Tablero
 
 @Database(
     entities = [Tablero::class, Tabla::class, Modo::class, Partida::class, Premio::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
+    // Room compara los schemas/*.json con el código nuevo y genera la migración solo.
     // 2 -> 3: tabla de premios y columna usarEnSencillo en modos.
-    // Room compara schemas/2.json con el código nuevo y genera la migración solo.
-    autoMigrations = [AutoMigration(from = 2, to = 3)]
+    // 3 -> 4: modos.cualquierPosicion y premios.figuras.
+    autoMigrations = [
+        AutoMigration(from = 2, to = 3),
+        AutoMigration(from = 3, to = 4)
+    ]
 )
 @TypeConverters(Converters::class)
 abstract class BingoDatabase : RoomDatabase() {
