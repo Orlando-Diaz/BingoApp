@@ -46,4 +46,13 @@ class ValidadorTablaTest {
         assertEquals(listOf(0, 5, 10, 15, 20), orden.take(5)) // toda la columna B
         assertTrue(12 !in orden)
     }
+
+    @Test
+    fun letraDeCadaBalota() {
+        assertEquals("B", ReglasBingo.letraDe(1))
+        assertEquals("B", ReglasBingo.letraDe(15))
+        assertEquals("I", ReglasBingo.letraDe(16))
+        assertEquals("G", ReglasBingo.letraDe(52))
+        assertEquals("O", ReglasBingo.letraDe(75))
+    }
 }

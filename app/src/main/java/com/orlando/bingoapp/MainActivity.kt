@@ -4,12 +4,22 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.orlando.bingoapp.ui.juego.JuegoScreen
 import com.orlando.bingoapp.ui.tableros.ListaTablerosScreen
 import com.orlando.bingoapp.ui.tableros.RegistroTableroScreen
 import com.orlando.bingoapp.ui.tableros.RegistroTableroViewModel
@@ -27,24 +37,52 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Pantalla { LISTA_TABLEROS, REGISTRO_TABLERO }
+private enum class Pantalla { JUEGO, LISTA_TABLEROS, REGISTRO_TABLERO }
 
 /** Navegación simple entre pantallas. Cuando haya más, pasamos a Navigation Compose. */
 @Composable
 fun BingoApp() {
-    var pantalla by rememberSaveable { mutableStateOf(Pantalla.LISTA_TABLEROS) }
+    var pantalla by rememberSaveable { mutableStateOf(Pantalla.JUEGO) }
     val registroViewModel: RegistroTableroViewModel = viewModel()
 
-    when (pantalla) {
-        Pantalla.LISTA_TABLEROS -> ListaTablerosScreen(
-            onNuevoTablero = {
-                registroViewModel.reiniciar()
-                pantalla = Pantalla.REGISTRO_TABLERO
-            }
-        )
-        Pantalla.REGISTRO_TABLERO -> RegistroTableroScreen(
+    // El registro de tableros ocupa toda la pantalla (sin barra inferior)
+    if (pantalla == Pantalla.REGISTRO_TABLERO) {
+        RegistroTableroScreen(
             viewModel = registroViewModel,
             onSalir = { pantalla = Pantalla.LISTA_TABLEROS }
         )
+        return
+    }
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = pantalla == Pantalla.JUEGO,
+                    onClick = { pantalla = Pantalla.JUEGO },
+                    icon = { Text("🎱", fontSize = 22.sp) },
+                    label = { Text("Juego") }
+                )
+                NavigationBarItem(
+                    selected = pantalla == Pantalla.LISTA_TABLEROS,
+                    onClick = { pantalla = Pantalla.LISTA_TABLEROS },
+                    icon = { Text("📋", fontSize = 22.sp) },
+                    label = { Text("Tableros") }
+                )
+            }
+        }
+    ) { padding ->
+        // consumeWindowInsets evita que las pantallas internas dupliquen los márgenes del sistema
+        Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
+            when (pantalla) {
+                Pantalla.JUEGO -> JuegoScreen()
+                else -> ListaTablerosScreen(
+                    onNuevoTablero = {
+                        registroViewModel.reiniciar()
+                        pantalla = Pantalla.REGISTRO_TABLERO
+                    }
+                )
+            }
+        }
     }
 }

@@ -14,6 +14,12 @@ object ReglasBingo {
 
     fun columnaDe(indice: Int): Int = indice % 5
 
+    /** Letra de una balota: 7 -> "B", 52 -> "G". */
+    fun letraDe(balota: Int): String = LETRAS[(balota - 1) / 15]
+
+    /** Todas las balotas de una columna: la B tiene del 1 al 15, etc. */
+    fun balotasDeColumna(columna: Int): List<Int> = rangoColumna(columna).toList()
+
     /**
      * Orden en que se llenan las casillas: columna por columna (toda la B, luego la I...),
      * porque así se lee una tabla de bingo. Se salta el centro libre.

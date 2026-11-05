@@ -5,26 +5,48 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.orlando.bingoapp.data.dao.ModoDao
+import com.orlando.bingoapp.data.dao.PartidaDao
 import com.orlando.bingoapp.data.dao.TableroDao
 import com.orlando.bingoapp.data.entity.Modo
+import com.orlando.bingoapp.data.entity.Partida
 import com.orlando.bingoapp.data.entity.Tabla
 import com.orlando.bingoapp.data.entity.Tablero
 
 @Database(
-    entities = [Tablero::class, Tabla::class, Modo::class],
-    version = 1,
-    exportSchema = false
+    entities = [Tablero::class, Tabla::class, Modo::class, Partida::class],
+    version = 2,
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class BingoDatabase : RoomDatabase() {
 
     abstract fun tableroDao(): TableroDao
     abstract fun modoDao(): ModoDao
+    abstract fun partidaDao(): PartidaDao
 
     companion object {
         @Volatile
         private var instancia: BingoDatabase? = null
+
+        /**
+         * Versión 1 -> 2: se agrega la tabla de partidas.
+         * Es como un script de Flyway: modifica la base de datos existente
+         * SIN borrar los tableros que ya estaban registrados.
+         */
+        private val MIGRACION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `partidas` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`fecha` INTEGER NOT NULL, " +
+                        "`balotas` TEXT NOT NULL, " +
+                        "`finalizada` INTEGER NOT NULL)"
+                )
+            }
+        }
 
         /** Una sola instancia para toda la app (como un @Bean singleton en Spring). */
         fun obtener(context: Context): BingoDatabase =
@@ -33,7 +55,10 @@ abstract class BingoDatabase : RoomDatabase() {
                     context.applicationContext,
                     BingoDatabase::class.java,
                     "bingo.db"
-                ).build().also { instancia = it }
+                )
+                    .addMigrations(MIGRACION_1_2)
+                    .build()
+                    .also { instancia = it }
             }
     }
 }
