@@ -4,13 +4,15 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.orlando.bingoapp.ui.tableros.ListaTablerosScreen
+import com.orlando.bingoapp.ui.tableros.RegistroTableroScreen
+import com.orlando.bingoapp.ui.tableros.RegistroTableroViewModel
 import com.orlando.bingoapp.ui.theme.BingoAppTheme
 
 class MainActivity : ComponentActivity() {
@@ -19,29 +21,30 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             BingoAppTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                BingoApp()
             }
         }
     }
 }
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+private enum class Pantalla { LISTA_TABLEROS, REGISTRO_TABLERO }
 
-@Preview(showBackground = true)
+/** Navegación simple entre pantallas. Cuando haya más, pasamos a Navigation Compose. */
 @Composable
-fun GreetingPreview() {
-    BingoAppTheme {
-        Greeting("Android")
+fun BingoApp() {
+    var pantalla by rememberSaveable { mutableStateOf(Pantalla.LISTA_TABLEROS) }
+    val registroViewModel: RegistroTableroViewModel = viewModel()
+
+    when (pantalla) {
+        Pantalla.LISTA_TABLEROS -> ListaTablerosScreen(
+            onNuevoTablero = {
+                registroViewModel.reiniciar()
+                pantalla = Pantalla.REGISTRO_TABLERO
+            }
+        )
+        Pantalla.REGISTRO_TABLERO -> RegistroTableroScreen(
+            viewModel = registroViewModel,
+            onSalir = { pantalla = Pantalla.LISTA_TABLEROS }
+        )
     }
 }
