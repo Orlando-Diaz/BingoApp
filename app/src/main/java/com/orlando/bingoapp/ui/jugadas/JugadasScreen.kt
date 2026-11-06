@@ -102,8 +102,8 @@ private fun TarjetaJugada(jugada: Modo, onEditar: () -> Unit, onEliminar: () -> 
                 Column(Modifier.weight(1f)) {
                     Text(jugada.nombre, style = MaterialTheme.typography.titleLarge)
                     Text(
-                        if (jugada.cualquierPosicion) "En cualquier posición · $posiciones formas de ganar"
-                        else "$posiciones forma(s) de ganar",
+                        (if (jugada.cualquierPosicion) "En cualquier posición · " else "") +
+                            "$posiciones forma(s) de ganar",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }

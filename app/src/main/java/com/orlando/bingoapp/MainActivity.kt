@@ -102,7 +102,7 @@ fun BingoApp() {
         // consumeWindowInsets evita que las pantallas internas dupliquen los márgenes del sistema
         Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
             when (pantalla) {
-                Pantalla.COBRO -> CobroScreen()
+                Pantalla.COBRO -> CobroScreen(onEmpezar = { pantalla = Pantalla.JUEGO })
                 Pantalla.LISTA_TABLEROS -> ListaTablerosScreen(
                     onNuevoTablero = {
                         registroViewModel.reiniciar()
@@ -119,7 +119,7 @@ fun BingoApp() {
                         pantalla = Pantalla.EDITOR_JUGADA
                     }
                 )
-                else -> JuegoScreen()
+                else -> JuegoScreen(onIrACobro = { pantalla = Pantalla.COBRO })
             }
         }
     }

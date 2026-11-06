@@ -23,7 +23,7 @@ import com.orlando.bingoapp.domain.ReglasBingo
 
 /**
  * Cuadrícula 5x5 para dibujar una figura: cada toque prende o apaga una casilla.
- * El centro es la casilla libre: siempre cuenta como marcada en el juego.
+ * El centro es la casilla LIBRE: no se puede tocar porque nunca sirve para ganar.
  */
 @Composable
 fun FiguraEditable(
@@ -48,25 +48,30 @@ fun FiguraEditable(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (columna in 0 until 5) {
                     val indice = fila * 5 + columna
-                    val activa = figura[indice] == '1'
+                    val esCentro = indice == ReglasBingo.INDICE_CENTRO
+                    val activa = !esCentro && figura[indice] == '1'
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .aspectRatio(1f)
                             .background(
-                                if (activa) colores.primary else colores.surfaceVariant,
+                                when {
+                                    esCentro -> colores.outlineVariant
+                                    activa -> colores.primary
+                                    else -> colores.surfaceVariant
+                                },
                                 RoundedCornerShape(8.dp)
                             )
                             .border(1.dp, colores.outline, RoundedCornerShape(8.dp))
-                            .clickable { onToque(indice) },
+                            .clickable(enabled = !esCentro) { onToque(indice) },
                         contentAlignment = Alignment.Center
                     ) {
-                        if (indice == ReglasBingo.INDICE_CENTRO) {
+                        if (esCentro) {
                             Text(
                                 "LIBRE",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (activa) colores.onPrimary else colores.onSurfaceVariant
+                                color = colores.onSurfaceVariant
                             )
                         }
                     }
@@ -92,7 +97,8 @@ fun FiguraMini(figura: String, tamano: Dp = 56.dp) {
                         Modifier
                             .size(celda)
                             .background(
-                                if (figura[fila * 5 + columna] == '1') colores.primary else colores.surfaceVariant,
+                                if (fila * 5 + columna != ReglasBingo.INDICE_CENTRO && figura[fila * 5 + columna] == '1') colores.primary
+                                else colores.surfaceVariant,
                                 RoundedCornerShape(2.dp)
                             )
                     )
@@ -104,6 +110,7 @@ fun FiguraMini(figura: String, tamano: Dp = 56.dp) {
 
 /** Prende o apaga una casilla de la figura. */
 fun alternarCasilla(figura: String, indice: Int): String {
+    if (indice == ReglasBingo.INDICE_CENTRO) return figura
     val casillas = figura.toCharArray()
     casillas[indice] = if (casillas[indice] == '1') '0' else '1'
     return String(casillas)

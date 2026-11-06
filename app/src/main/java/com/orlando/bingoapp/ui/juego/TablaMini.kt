@@ -18,7 +18,8 @@ import androidx.compose.ui.unit.sp
 import com.orlando.bingoapp.domain.ReglasBingo
 
 /**
- * Una tabla pequeña de solo lectura: muestra los números cantados en color
+ * Una tabla pequeña de solo lectura (la LIBRE del centro va en gris porque no cuenta):
+ * muestra los números cantados en color
  * y, si ganó, resalta las casillas de la figura ganadora.
  */
 @Composable
@@ -36,8 +37,8 @@ fun TablaMini(
                     val indice = fila * 5 + columna
                     val esCentro = indice == ReglasBingo.INDICE_CENTRO
                     val numero = numeros[indice]
-                    val marcada = esCentro || numero in balotas
-                    val deLaFigura = figuraGanadora?.getOrNull(indice) == '1'
+                    val marcada = !esCentro && numero in balotas
+                    val deLaFigura = !esCentro && figuraGanadora?.getOrNull(indice) == '1'
 
                     val (fondo, texto) = when {
                         deLaFigura -> colores.tertiary to colores.onTertiary

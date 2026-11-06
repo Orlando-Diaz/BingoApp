@@ -34,16 +34,14 @@ data class EstadoJuego(
     val premios: List<Premio> = emptyList(),
     val modos: List<Modo> = emptyList(),
     val posiblesGanadores: List<Ganador> = emptyList(),
-    val tablasPagadas: Set<Long> = emptySet()
+    val tablerosPagados: Set<Long> = emptySet(), // ids de los tableros que pagaron esta ronda
+    val recaudo: Int = 0
 ) {
     val balotas: List<Int> get() = partida?.balotas.orEmpty()
     val premioActual: Premio? get() = premios.firstOrNull { !it.ganado }
     val sinIniciar: Boolean get() = premios.isEmpty()
     val terminada: Boolean get() = premios.isNotEmpty() && premioActual == null
     val esLlena: Boolean get() = premios.size > 1
-
-    /** Lo que se recogió en esta partida según las tablas pagadas. */
-    val recaudo: Int get() = Dinero.valorTablas(tablasPagadas.size, partida?.precioCuatroTablas ?: 0)
 
     fun valorPremio(premio: Premio): Int = Dinero.porcentaje(recaudo, premio.porcentaje)
 
@@ -55,8 +53,13 @@ data class EstadoJuego(
 /** Un premio intermedio de la llena: la figura se dibuja al iniciar la partida. */
 data class PremioIntermedio(val nombre: String, val figura: String, val porcentaje: Int)
 
-data class TablaVerificada(val posicion: Int, val numeros: List<Int>, val pagada: Boolean, val ganadora: Ganador?)
-data class Verificacion(val numero: Int, val encontrado: Boolean, val tablas: List<TablaVerificada>)
+data class TablaVerificada(val posicion: Int, val numeros: List<Int>, val ganadora: Ganador?)
+data class Verificacion(
+    val numero: Int,
+    val encontrado: Boolean,
+    val pagado: Boolean = false,
+    val tablas: List<TablaVerificada> = emptyList()
+)
 
 class JuegoViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -65,14 +68,14 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     private val premioDao = db.premioDao()
     private val modoDao = db.modoDao()
     private val tableroDao = db.tableroDao()
-    private val pagoDao = db.tablaPagadaDao()
+    private val listaDao = db.tableroEnPartidaDao()
     private val ajustes = Ajustes(application)
 
     /** Evita que dos toques muy rápidos se pisen (como synchronized, pero para corrutinas). */
     private val candado = Mutex()
 
     /**
-     * combine junta cuatro fuentes "vivas": la partida, los tableros, los modos y los pagos.
+     * combine junta cuatro fuentes "vivas": la partida, los tableros, las jugadas y la lista de cobro.
      * Cada vez que cualquiera cambia (por ejemplo, se marca una balota),
      * se recalcula quién va ganando. Se hace en segundo plano (Dispatchers.Default).
      */
@@ -80,18 +83,21 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
         partidaDao.observarActualConPremios(),
         tableroDao.obtenerTodos(),
         modoDao.obtenerTodos(),
-        pagoDao.observarDePartidaActual()
-    ) { actual, tableros, modos, pagos ->
+        listaDao.observarDePartidaActual()
+    ) { actual, tableros, modos, lista ->
         val partida = actual?.partida
-        val pagadas = pagos.map { it.tablaId }.toSet()
+        val pagados = lista.filter { it.pagado }.map { it.tableroId }.toSet()
+        val precio = partida?.precioCuatroTablas ?: 0
+        val recaudo = tableros
+            .filter { it.tablero.id in pagados }
+            .sumOf { Dinero.valorTablas(it.tablero.cantidadTablas, precio) }
         val premios = actual?.premios.orEmpty().sortedBy { it.orden }
         val premioActual = premios.firstOrNull { !it.ganado }
 
         val ganadores = if (partida != null && premioActual != null) {
-            // Solo juegan las tablas pagadas en esta partida
-            val tablas = tableros.flatMap { t ->
-                t.tablas.filter { it.id in pagadas }
-                    .map { TablaEnJuego(t.tablero.numero, it.posicion, it.numeros) }
+            // Solo juegan los tableros que pagaron esta ronda
+            val tablas = tableros.filter { it.tablero.id in pagados }.flatMap { t ->
+                t.tablas.map { TablaEnJuego(t.tablero.numero, it.posicion, it.numeros) }
             }
             VerificadorGanadores.buscarGanadores(
                 tablas,
@@ -100,7 +106,7 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
             )
         } else emptyList()
 
-        EstadoJuego(cargando = false, partida, premios, modos, ganadores, pagadas)
+        EstadoJuego(cargando = false, partida, premios, modos, ganadores, pagados, recaudo)
     }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EstadoJuego())
@@ -157,10 +163,17 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Cierra la partida actual (si hay) y crea una nueva con sus premios. */
+    /**
+     * Cierra la ronda actual y crea la nueva con sus premios.
+     * La lista de tableros pasa a la nueva ronda como pendiente de pago.
+     */
     private suspend fun crearPartida(premios: List<Premio>, precioCuatroTablas: Int) {
-        partidaDao.obtenerActual()?.let { partidaDao.actualizar(it.copy(finalizada = true)) }
+        val anterior = partidaDao.obtenerActual()
+        anterior?.let { partidaDao.actualizar(it.copy(finalizada = true)) }
         val partidaId = partidaDao.insertar(Partida(precioCuatroTablas = precioCuatroTablas))
         premioDao.insertarTodos(premios.map { it.copy(partidaId = partidaId) })
+        val idAnterior = anterior?.id ?: partidaDao.ultimaFinalizadaId()
+        idAnterior?.let { listaDao.copiarLista(anterior = it, nueva = partidaId) }
     }
 
     /**
@@ -195,15 +208,15 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
             val balotas = e.balotas.toSet()
 
             verificacion = if (tablero == null) {
-                Verificacion(numero, encontrado = false, tablas = emptyList())
+                Verificacion(numero, encontrado = false)
             } else {
-                Verificacion(numero, encontrado = true, tablas = tablero.tablas.sortedBy { it.posicion }.map { tabla ->
-                    val pagada = tabla.id in e.tablasPagadas
-                    // Una tabla que no se pagó no puede ganar
-                    val ganadora = if (!pagada) null else VerificadorGanadores.buscarGanadores(
+                // Un tablero que no pagó esta ronda no puede ganar
+                val pagado = tablero.tablero.id in e.tablerosPagados
+                Verificacion(numero, encontrado = true, pagado = pagado, tablas = tablero.tablas.sortedBy { it.posicion }.map { tabla ->
+                    val ganadora = if (!pagado) null else VerificadorGanadores.buscarGanadores(
                         listOf(TablaEnJuego(numero, tabla.posicion, tabla.numeros)), modos, balotas
                     ).firstOrNull()
-                    TablaVerificada(tabla.posicion, tabla.numeros, pagada, ganadora)
+                    TablaVerificada(tabla.posicion, tabla.numeros, ganadora)
                 })
             }
         }

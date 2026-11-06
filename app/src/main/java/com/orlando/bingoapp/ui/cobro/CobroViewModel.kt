@@ -9,9 +9,8 @@ import androidx.lifecycle.viewModelScope
 import com.orlando.bingoapp.data.Ajustes
 import com.orlando.bingoapp.data.BingoDatabase
 import com.orlando.bingoapp.data.entity.Partida
-import com.orlando.bingoapp.data.entity.Tabla
-import com.orlando.bingoapp.data.entity.TablaPagada
 import com.orlando.bingoapp.data.entity.TableroConTablas
+import com.orlando.bingoapp.data.entity.TableroEnPartida
 import com.orlando.bingoapp.domain.Dinero
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -19,52 +18,55 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** Un tablero de la lista de cobro, con si ya pagó esta ronda. */
+data class FilaCobro(val tablero: TableroConTablas, val pagado: Boolean) {
+    val numero: Int get() = tablero.tablero.numero
+    val id: Long get() = tablero.tablero.id
+    val cantidadTablas: Int get() = tablero.tablero.cantidadTablas
+}
+
 data class EstadoCobro(
     val cargando: Boolean = true,
     val partida: Partida? = null,
     val esLlena: Boolean = false,
     val hayPremios: Boolean = false,
     val tableros: List<TableroConTablas> = emptyList(),
-    val pagadas: Set<Long> = emptySet()
+    val filas: List<FilaCobro> = emptyList()
 ) {
     val precioCuatro: Int get() = partida?.precioCuatroTablas ?: 0
-    val recaudo: Int get() = Dinero.valorTablas(pagadas.size, precioCuatro)
+    val pagados: Int get() = filas.count { it.pagado }
+    val pendientes: Int get() = filas.count { !it.pagado }
+    val recaudo: Int get() = filas.filter { it.pagado }.sumOf { valor(it) }
 
-    /** Tableros que tienen al menos una tabla pagada, con cuántas. */
-    val tablerosConPago: List<Pair<TableroConTablas, Int>>
-        get() = tableros.mapNotNull { t ->
-            val cantidad = t.tablas.count { it.id in pagadas }
-            if (cantidad > 0) t to cantidad else null
-        }
-
+    fun valor(fila: FilaCobro): Int = Dinero.valorTablas(fila.cantidadTablas, precioCuatro)
     fun tablero(numero: Int): TableroConTablas? = tableros.find { it.tablero.numero == numero }
+    fun enLista(numero: Int): Boolean = filas.any { it.numero == numero }
 }
 
 class CobroViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = BingoDatabase.obtener(application)
-    private val partidaDao = db.partidaDao()
-    private val pagoDao = db.tablaPagadaDao()
+    private val listaDao = db.tableroEnPartidaDao()
     private val ajustes = Ajustes(application)
 
     val estado: StateFlow<EstadoCobro> = combine(
-        partidaDao.observarActualConPremios(),
+        db.partidaDao().observarActualConPremios(),
         db.tableroDao().obtenerTodos(),
-        pagoDao.observarDePartidaActual()
-    ) { actual, tableros, pagos ->
+        listaDao.observarDePartidaActual()
+    ) { actual, tableros, lista ->
+        val porId = tableros.associateBy { it.tablero.id }
         EstadoCobro(
             cargando = false,
             partida = actual?.partida,
             esLlena = (actual?.premios?.size ?: 0) > 1,
             hayPremios = !actual?.premios.isNullOrEmpty(),
             tableros = tableros,
-            pagadas = pagos.map { it.tablaId }.toSet()
+            filas = lista.mapNotNull { r -> porId[r.tableroId]?.let { FilaCobro(it, r.pagado) } }
+                .sortedBy { it.numero }
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EstadoCobro())
 
     var numeroTexto by mutableStateOf("")
-        private set
-    var tableroSeleccionado by mutableStateOf<Int?>(null)
         private set
     var mensaje by mutableStateOf<String?>(null)
         private set
@@ -74,60 +76,58 @@ class CobroViewModel(application: Application) : AndroidViewModel(application) {
         mensaje = null
     }
 
-    fun buscar() {
+    /** Agrega el tablero escrito a la lista, como pagado (se agrega cuando se vende). */
+    fun agregar() {
         val numero = numeroTexto.toIntOrNull() ?: return
-        if (estado.value.tablero(numero) == null) {
-            mensaje = "No hay ningún tablero con el número $numero"
-            tableroSeleccionado = null
-        } else {
-            tableroSeleccionado = numero
-            mensaje = null
+        val e = estado.value
+        val partidaId = e.partida?.id ?: return
+        val tablero = e.tablero(numero)
+        mensaje = when {
+            tablero == null -> "No hay ningún tablero con el número $numero"
+            e.enLista(numero) -> "El tablero $numero ya está en la lista"
+            else -> null
+        }
+        if (tablero == null || mensaje != null) return
+        viewModelScope.launch {
+            listaDao.guardar(TableroEnPartida(partidaId, tablero.tablero.id, pagado = true))
+            numeroTexto = ""
         }
     }
 
-    fun seleccionar(numero: Int) {
-        tableroSeleccionado = numero
-        numeroTexto = numero.toString()
-        mensaje = null
-    }
-
-    /** Cierra el tablero y deja el campo listo para el siguiente. */
-    fun listo() {
-        tableroSeleccionado = null
-        numeroTexto = ""
-    }
-
-    /** Toque en una tabla: si estaba pagada deja de jugar, y al revés. */
-    fun alternar(tabla: Tabla) {
+    fun alternarPago(fila: FilaCobro) {
         val partidaId = estado.value.partida?.id ?: return
-        viewModelScope.launch {
-            if (tabla.id in estado.value.pagadas) pagoDao.quitar(partidaId, listOf(tabla.id))
-            else pagoDao.insertarTodas(listOf(TablaPagada(partidaId, tabla.id)))
-        }
+        viewModelScope.launch { listaDao.cambiarPago(partidaId, fila.id, !fila.pagado) }
     }
 
-    /** El caso más común: pagaron todo el tablero. Un toque y listo para el siguiente. */
-    fun todasPagas(tablero: TableroConTablas) {
+    fun todosPagaron() {
         val partidaId = estado.value.partida?.id ?: return
-        viewModelScope.launch {
-            pagoDao.insertarTodas(tablero.tablas.map { TablaPagada(partidaId, it.id) })
-            listo()
-        }
+        viewModelScope.launch { listaDao.marcarTodosPagados(partidaId) }
     }
 
-    fun ninguna(tablero: TableroConTablas) {
+    fun quitar(fila: FilaCobro) {
         val partidaId = estado.value.partida?.id ?: return
-        viewModelScope.launch { pagoDao.quitar(partidaId, tablero.tablas.map { it.id }) }
+        viewModelScope.launch { listaDao.quitar(partidaId, fila.id) }
     }
 
-    fun copiarPartidaAnterior() {
-        val actual = estado.value.partida ?: return
-        viewModelScope.launch {
-            val anterior = partidaDao.ultimaFinalizadaId()
-            if (anterior == null) {
-                mensaje = "No hay una partida anterior para copiar"
-            } else {
-                pagoDao.copiar(anterior, actual.id)
+    fun vaciarLista() {
+        val partidaId = estado.value.partida?.id ?: return
+        viewModelScope.launch { listaDao.vaciar(partidaId) }
+    }
+
+    /**
+     * Cambia un tablero de la lista por otro (ej: el 2 por el 5).
+     * Devuelve un mensaje de error, o null si se pudo.
+     */
+    fun cambiar(fila: FilaCobro, numeroNuevo: Int): String? {
+        val e = estado.value
+        val partidaId = e.partida?.id ?: return "No hay una ronda en curso"
+        val nuevo = e.tablero(numeroNuevo)
+        return when {
+            nuevo == null -> "No hay ningún tablero con el número $numeroNuevo"
+            e.enLista(numeroNuevo) -> "El tablero $numeroNuevo ya lo está jugando alguien"
+            else -> {
+                viewModelScope.launch { listaDao.cambiar(partidaId, fila.id, nuevo.tablero.id, fila.pagado) }
+                null
             }
         }
     }
@@ -137,7 +137,7 @@ class CobroViewModel(application: Application) : AndroidViewModel(application) {
     val precioCuatroSencillo: Int get() = ajustes.precioCuatroSencillo
     val precioCuatroLlena: Int get() = ajustes.precioCuatroLlena
 
-    /** Los precios nuevos aplican desde la próxima partida que se inicie. */
+    /** Los precios nuevos aplican desde la próxima ronda que se inicie. */
     fun guardarPrecios(sencillo: Int, llena: Int) {
         ajustes.precioCuatroSencillo = sencillo
         ajustes.precioCuatroLlena = llena

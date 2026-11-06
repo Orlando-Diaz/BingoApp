@@ -21,10 +21,23 @@ class VerificadorGanadoresTest {
         numeros = List(25) { i -> if (i == 12) 0 else (i % 5) * 15 + (i / 5) + 1 }
     )
 
+    /** Las jugadas como las crean en la app: dibujadas una vez y "en cualquier posición". */
     private val sencillo = listOf(
         ModoEnJuego("4 esquinas", Figuras.CUATRO_ESQUINAS),
-        ModoEnJuego("Cuadrito de 4", Figuras.CUADRITOS),
-        ModoEnJuego("Línea", Figuras.HORIZONTALES + Figuras.VERTICALES + Figuras.DIAGONALES)
+        ModoEnJuego(
+            "Cuadrito de 4",
+            Figuras.expandir(listOf(Figuras.dibujo("XX...", "XX...", ".....", ".....", ".....")), cualquierPosicion = true)
+        ),
+        ModoEnJuego(
+            "Línea",
+            Figuras.expandir(
+                listOf(
+                    Figuras.dibujo("XXXXX", ".....", ".....", ".....", "....."),
+                    Figuras.dibujo("X....", "X....", "X....", "X....", "X....")
+                ),
+                cualquierPosicion = true
+            )
+        )
     )
 
     private fun ganadores(vararg balotas: Int, modos: List<ModoEnJuego> = sencillo) =
@@ -49,15 +62,29 @@ class VerificadorGanadoresTest {
     }
 
     @Test
-    fun cuadritoJuntoAlCentroSoloNecesitaTresNumeros() {
-        // 17, 32 y 18 + el centro libre forman un 2x2
-        assertEquals("Cuadrito de 4", ganadores(17, 32, 18).first().nombreModo)
+    fun cuadritoQueTocaLaLibreNoGana() {
+        // 17, 32 y 18 + la LIBRE: antes ganaba, pero la LIBRE nunca cuenta
+        assertTrue(ganadores(17, 32, 18).isEmpty())
     }
 
     @Test
-    fun lineaDiagonalUsaElCentroLibre() {
-        // diagonal 1, 17, (centro), 49, 65
-        assertEquals("Línea", ganadores(1, 17, 49, 65).first().nombreModo)
+    fun cuadritoNormalGana() {
+        // 1, 16, 2, 17: esquina de arriba a la izquierda
+        assertEquals("Cuadrito de 4", ganadores(1, 16, 2, 17).first().nombreModo)
+    }
+
+    @Test
+    fun lineaDelMedioNoGanaPorqueTieneLaLibre() {
+        // fila del medio: 3, 18, (LIBRE), 48, 63
+        assertTrue(ganadores(3, 18, 48, 63).isEmpty())
+    }
+
+    @Test
+    fun figuraDibujadaQuePasaPorElCentroLoIgnora() {
+        // Una X de la llena: se gana con sus 8 números, la LIBRE no se exige
+        val x = listOf(ModoEnJuego("La X", Figuras.X))
+        assertEquals("La X", ganadores(1, 17, 49, 65, 61, 47, 19, 5, modos = x).first().nombreModo)
+        assertTrue(ganadores(1, 17, 49, 65, 61, 47, 19, modos = x).isEmpty())
     }
 
     @Test

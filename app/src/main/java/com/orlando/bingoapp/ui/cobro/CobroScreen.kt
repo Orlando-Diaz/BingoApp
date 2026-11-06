@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -21,9 +22,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -41,21 +42,47 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.orlando.bingoapp.data.entity.TableroConTablas
 import com.orlando.bingoapp.domain.Dinero
 
+/**
+ * Cobro de la ronda: la lista de tableros que están jugando (se copia de la ronda anterior)
+ * y si cada uno ya pagó. Al terminar, "Empezar a jugar" lleva a la pantalla de juego.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CobroScreen(viewModel: CobroViewModel = viewModel()) {
+fun CobroScreen(
+    onEmpezar: () -> Unit,
+    viewModel: CobroViewModel = viewModel()
+) {
     val estado by viewModel.estado.collectAsStateWithLifecycle()
     var editandoPrecios by remember { mutableStateOf(false) }
+    var cambiando by remember { mutableStateOf<FilaCobro?>(null) }
+    var quitando by remember { mutableStateOf<FilaCobro?>(null) }
+    var vaciando by remember { mutableStateOf(false) }
+    val enRonda = estado.partida != null && estado.hayPremios
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Cobro") },
+                title = { Text(if (!enRonda) "Cobro" else if (estado.esLlena) "Cobro · Llena" else "Cobro · Sencillo") },
                 actions = { TextButton(onClick = { editandoPrecios = true }) { Text("Precios") } }
             )
+        },
+        bottomBar = {
+            if (enRonda) {
+                Surface(tonalElevation = 3.dp) {
+                    Button(
+                        onClick = onEmpezar,
+                        enabled = estado.pagados > 0,
+                        modifier = Modifier.fillMaxWidth().padding(12.dp).height(56.dp)
+                    ) {
+                        Text(
+                            if (estado.pagados > 0) "Empezar a jugar · ${estado.pagados} tableros" else "Nadie ha pagado todavía",
+                            fontSize = 18.sp
+                        )
+                    }
+                }
+            }
         }
     ) { padding ->
         Column(
@@ -68,50 +95,41 @@ fun CobroScreen(viewModel: CobroViewModel = viewModel()) {
         ) {
             when {
                 estado.cargando -> {}
-                estado.partida == null || !estado.hayPremios -> Text(
-                    "Primero inicia una partida en la pestaña Juego y luego registra aquí quién pagó.",
+                !enRonda -> Text(
+                    "Primero toca \"Nueva\" en la pestaña Juego y elige sencillo o llena; " +
+                        "la app te trae aquí para cobrar.",
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(top = 24.dp)
                 )
                 else -> {
                     Resumen(estado)
+                    AgregarTablero(viewModel)
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = viewModel.numeroTexto,
-                            onValueChange = viewModel::cambiarNumero,
-                            label = { Text("Número del tablero") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Search
-                            ),
-                            keyboardActions = KeyboardActions(onSearch = { viewModel.buscar() }),
-                            modifier = Modifier.weight(1f)
+                    if (estado.pendientes > 0) {
+                        Button(onClick = viewModel::todosPagaron, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                            Text("✓ Todos pagaron (${estado.pendientes} pendientes)", fontSize = 17.sp)
+                        }
+                    }
+
+                    if (estado.filas.isEmpty()) {
+                        Text(
+                            "La lista está vacía. Escribe el número de cada tablero que vendas y toca Agregar.",
+                            style = MaterialTheme.typography.bodyLarge
                         )
-                        Button(onClick = viewModel::buscar, enabled = viewModel.numeroTexto.isNotEmpty()) {
-                            Text("Buscar")
+                    } else {
+                        Text("Toca \"Pagó / Debe\" para cambiarlo", style = MaterialTheme.typography.bodySmall)
+                        estado.filas.forEach { fila ->
+                            FilaTablero(
+                                fila = fila,
+                                valor = estado.valor(fila),
+                                onPago = { viewModel.alternarPago(fila) },
+                                onCambiar = { cambiando = fila },
+                                onQuitar = { quitando = fila }
+                            )
                         }
+                        TextButton(onClick = { vaciando = true }) { Text("Vaciar lista (nueva noche)") }
                     }
-                    viewModel.mensaje?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-
-                    viewModel.tableroSeleccionado?.let { numero ->
-                        estado.tablero(numero)?.let { tablero ->
-                            TarjetaCobroTablero(tablero, estado, viewModel)
-                        }
-                    }
-
-                    if (estado.pagadas.isEmpty()) {
-                        OutlinedButton(
-                            onClick = viewModel::copiarPartidaAnterior,
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Copiar pagos de la partida anterior") }
-                    }
-
-                    ListaPagados(estado, onSeleccionar = viewModel::seleccionar)
+                    Box(Modifier.height(8.dp))
                 }
             }
         }
@@ -126,6 +144,44 @@ fun CobroScreen(viewModel: CobroViewModel = viewModel()) {
                 editandoPrecios = false
             },
             onCancelar = { editandoPrecios = false }
+        )
+    }
+
+    cambiando?.let { fila ->
+        DialogoCambiar(
+            fila = fila,
+            onCambiar = { numero -> viewModel.cambiar(fila, numero).also { if (it == null) cambiando = null } },
+            onCancelar = { cambiando = null }
+        )
+    }
+
+    quitando?.let { fila ->
+        AlertDialog(
+            onDismissRequest = { quitando = null },
+            title = { Text("¿Quitar el tablero ${fila.numero}?") },
+            text = { Text("Sale de la lista: ya no juega esta ronda ni las siguientes.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.quitar(fila)
+                    quitando = null
+                }) { Text("Quitar") }
+            },
+            dismissButton = { TextButton(onClick = { quitando = null }) { Text("Cancelar") } }
+        )
+    }
+
+    if (vaciando) {
+        AlertDialog(
+            onDismissRequest = { vaciando = false },
+            title = { Text("¿Vaciar la lista?") },
+            text = { Text("Se quitan todos los tableros. Úsalo al empezar una noche nueva.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.vaciarLista()
+                    vaciando = false
+                }) { Text("Vaciar") }
+            },
+            dismissButton = { TextButton(onClick = { vaciando = false }) { Text("Cancelar") } }
         )
     }
 }
@@ -144,103 +200,115 @@ private fun Resumen(estado: EstadoCobro) {
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
             Text(
-                "${estado.pagadas.size} tablas en juego · ${if (estado.esLlena) "Llena" else "Sencillo"}: " +
-                    "4 tablas ${Dinero.formato(estado.precioCuatro)}, 8 tablas ${Dinero.formato(estado.precioCuatro * 2)}",
+                "${estado.pagados} de ${estado.filas.size} tableros pagaron",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Text(
+                "Tablero de 4: ${Dinero.formato(estado.precioCuatro)} · de 8: ${Dinero.formato(estado.precioCuatro * 2)}",
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
         }
     }
 }
 
-/** Las tablas del tablero buscado: un toque cambia entre pagada y "no juega". */
 @Composable
-private fun TarjetaCobroTablero(
-    tablero: TableroConTablas,
-    estado: EstadoCobro,
-    viewModel: CobroViewModel
+private fun AgregarTablero(viewModel: CobroViewModel) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = viewModel.numeroTexto,
+            onValueChange = viewModel::cambiarNumero,
+            label = { Text("Número del tablero") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { viewModel.agregar() }),
+            modifier = Modifier.weight(1f)
+        )
+        Button(onClick = viewModel::agregar, enabled = viewModel.numeroTexto.isNotEmpty()) { Text("Agregar") }
+    }
+    viewModel.mensaje?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+}
+
+/** Un tablero de la lista: botón grande Pagó/Debe, y opciones de cambiar o quitar. */
+@Composable
+private fun FilaTablero(
+    fila: FilaCobro,
+    valor: Int,
+    onPago: () -> Unit,
+    onCambiar: () -> Unit,
+    onQuitar: () -> Unit
 ) {
-    val tablas = tablero.tablas.sortedBy { it.posicion }
-    val pagadas = tablas.count { it.id in estado.pagadas }
     val colores = MaterialTheme.colorScheme
-
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Tablero ${tablero.tablero.numero}", style = MaterialTheme.typography.titleLarge)
-            Text(
-                "$pagadas de ${tablas.size} tablas · ${Dinero.formato(Dinero.valorTablas(pagadas, estado.precioCuatro))}",
-                style = MaterialTheme.typography.bodyLarge
-            )
-
-            // Filas de 4 tablas
-            tablas.chunked(4).forEach { fila ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    fila.forEach { tabla ->
-                        val pagada = tabla.id in estado.pagadas
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(64.dp)
-                                .background(
-                                    if (pagada) colores.primary else colores.surfaceVariant,
-                                    RoundedCornerShape(10.dp)
-                                )
-                                .clickable { viewModel.alternar(tabla) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    "${tabla.posicion}",
-                                    fontSize = 22.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (pagada) colores.onPrimary else colores.onSurfaceVariant
-                                )
-                                Text(
-                                    if (pagada) "Paga" else "No juega",
-                                    fontSize = 11.sp,
-                                    color = if (pagada) colores.onPrimary else colores.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Tablero ${fila.numero}", style = MaterialTheme.typography.titleLarge)
+                Text("${fila.cantidadTablas} tablas · ${Dinero.formato(valor)}", style = MaterialTheme.typography.bodyMedium)
+                Row {
+                    TextButton(onClick = onCambiar) { Text("Cambiar") }
+                    TextButton(onClick = onQuitar) { Text("Quitar") }
                 }
             }
-
-            Button(onClick = { viewModel.todasPagas(tablero) }, modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .width(96.dp)
+                    .height(64.dp)
+                    .background(if (fila.pagado) colores.primary else colores.errorContainer, RoundedCornerShape(12.dp))
+                    .clickable(onClick = onPago),
+                contentAlignment = Alignment.Center
+            ) {
                 Text(
-                    "Todas pagas · ${Dinero.formato(Dinero.valorTablas(tablas.size, estado.precioCuatro))}",
-                    fontSize = 18.sp
+                    if (fila.pagado) "✓ Pagó" else "Debe",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (fila.pagado) colores.onPrimary else colores.onErrorContainer
                 )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { viewModel.ninguna(tablero) }, modifier = Modifier.weight(1f)) {
-                    Text("Ninguna")
-                }
-                OutlinedButton(onClick = viewModel::listo, modifier = Modifier.weight(1f)) {
-                    Text("Listo")
-                }
             }
         }
     }
 }
 
+/** Cambiar el tablero de una persona por otro que esté libre. */
 @Composable
-private fun ListaPagados(estado: EstadoCobro, onSeleccionar: (Int) -> Unit) {
-    val lista = estado.tablerosConPago
-    if (lista.isEmpty()) return
-    Text("Tableros que pagaron (${lista.size})", style = MaterialTheme.typography.titleMedium)
-    lista.forEach { (tablero, cantidad) ->
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onSeleccionar(tablero.tablero.numero) }
-        ) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text("Tablero ${tablero.tablero.numero}", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                Text("$cantidad de ${tablero.tablas.size} · ${Dinero.formato(Dinero.valorTablas(cantidad, estado.precioCuatro))}")
+private fun DialogoCambiar(
+    fila: FilaCobro,
+    onCambiar: (Int) -> String?,
+    onCancelar: () -> Unit
+) {
+    var numero by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("Cambiar el tablero ${fila.numero}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("¿Por cuál tablero lo cambia? Se conserva si ya pagó.")
+                OutlinedTextField(
+                    value = numero,
+                    onValueChange = {
+                        numero = it.filter(Char::isDigit).take(4)
+                        error = null
+                    },
+                    label = { Text("Número del tablero nuevo") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
-        }
-    }
-    Box(Modifier.height(16.dp))
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { numero.toIntOrNull()?.let { error = onCambiar(it) } },
+                enabled = numero.isNotEmpty()
+            ) { Text("Cambiar") }
+        },
+        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } }
+    )
 }
 
 @Composable

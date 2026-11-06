@@ -11,27 +11,29 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.orlando.bingoapp.data.dao.ModoDao
 import com.orlando.bingoapp.data.dao.PartidaDao
 import com.orlando.bingoapp.data.dao.PremioDao
-import com.orlando.bingoapp.data.dao.TablaPagadaDao
+import com.orlando.bingoapp.data.dao.TableroEnPartidaDao
 import com.orlando.bingoapp.data.dao.TableroDao
 import com.orlando.bingoapp.data.entity.Modo
 import com.orlando.bingoapp.data.entity.Partida
 import com.orlando.bingoapp.data.entity.Premio
 import com.orlando.bingoapp.data.entity.Tabla
-import com.orlando.bingoapp.data.entity.TablaPagada
 import com.orlando.bingoapp.data.entity.Tablero
+import com.orlando.bingoapp.data.entity.TableroEnPartida
 
 @Database(
-    entities = [Tablero::class, Tabla::class, Modo::class, Partida::class, Premio::class, TablaPagada::class],
-    version = 5,
+    entities = [Tablero::class, Tabla::class, Modo::class, Partida::class, Premio::class, TableroEnPartida::class],
+    version = 6,
     exportSchema = true,
     // Room compara los schemas/*.json con el código nuevo y genera la migración solo.
     // 2 -> 3: tabla de premios y columna usarEnSencillo en modos.
     // 3 -> 4: modos.cualquierPosicion y premios.figuras.
     // 4 -> 5: tabla tablas_pagadas y partidas.precioCuatroTablas.
+    // 5 -> 6: cobro por tablero: sale tablas_pagadas, entra tableros_en_partida.
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
-        AutoMigration(from = 4, to = 5)
+        AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 5, to = 6, spec = Migracion5a6::class)
     ]
 )
 @TypeConverters(Converters::class)
@@ -41,7 +43,7 @@ abstract class BingoDatabase : RoomDatabase() {
     abstract fun modoDao(): ModoDao
     abstract fun partidaDao(): PartidaDao
     abstract fun premioDao(): PremioDao
-    abstract fun tablaPagadaDao(): TablaPagadaDao
+    abstract fun tableroEnPartidaDao(): TableroEnPartidaDao
 
     companion object {
         @Volatile

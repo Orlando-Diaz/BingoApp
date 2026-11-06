@@ -33,7 +33,10 @@ class EditorJugadaViewModel(application: Application) : AndroidViewModel(applica
 
     /** Cuántas figuras distintas se van a revisar realmente en el juego. */
     val posicionesTotales: Int
-        get() = Figuras.expandir(figuras.filter { Figuras.cantidadCasillas(it) > 0 }, cualquierPosicion).size
+        get() = Figuras.expandir(
+            figuras.filter { Figuras.cantidadCasillas(it) > 0 },
+            cualquierPosicion
+        ).size
 
     /** Prepara el formulario: vacío para una nueva, o con los datos de una existente. */
     fun cargar(jugada: Modo?) {
@@ -73,6 +76,7 @@ class EditorJugadaViewModel(application: Application) : AndroidViewModel(applica
         mensajeError = when {
             nombre.isBlank() -> "Ponle un nombre a la jugada"
             dibujadas.isEmpty() -> "Dibuja la figura tocando las casillas"
+            posicionesTotales == 0 -> "Esa figura solo cabe pasando por la LIBRE, que no cuenta"
             else -> null
         }
         if (mensajeError != null) return

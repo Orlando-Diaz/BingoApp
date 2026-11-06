@@ -177,18 +177,20 @@ fun DialogoVerificarTablero(
                     else -> {
                         val ganadoras = verificacion.tablas.filter { it.ganadora != null }
                         Text(
-                            if (ganadoras.isEmpty()) "Tablero ${verificacion.numero}: ninguna tabla ha ganado todavía"
-                            else "¡Tablero ${verificacion.numero} tiene ${ganadoras.size} tabla(s) ganadora(s)!",
+                            when {
+                                !verificacion.pagado -> "Tablero ${verificacion.numero}: no pagó esta ronda, no juega"
+                                ganadoras.isEmpty() -> "Tablero ${verificacion.numero}: ninguna tabla ha ganado todavía"
+                                else -> "¡Tablero ${verificacion.numero} tiene ${ganadoras.size} tabla(s) ganadora(s)!"
+                            },
                             style = MaterialTheme.typography.titleMedium,
-                            color = if (ganadoras.isEmpty()) MaterialTheme.colorScheme.onSurface
-                            else MaterialTheme.colorScheme.tertiary
+                            color = when {
+                                !verificacion.pagado -> MaterialTheme.colorScheme.error
+                                ganadoras.isEmpty() -> MaterialTheme.colorScheme.onSurface
+                                else -> MaterialTheme.colorScheme.tertiary
+                            }
                         )
                         verificacion.tablas.forEach { tabla ->
-                            val detalle = when {
-                                !tabla.pagada -> " — no pagada, no juega"
-                                tabla.ganadora != null -> " — ganó con ${tabla.ganadora.nombreModo}"
-                                else -> ""
-                            }
+                            val detalle = if (tabla.ganadora != null) " — ganó con ${tabla.ganadora.nombreModo}" else ""
                             Text(
                                 "Tabla ${tabla.posicion}$detalle",
                                 style = MaterialTheme.typography.bodyLarge

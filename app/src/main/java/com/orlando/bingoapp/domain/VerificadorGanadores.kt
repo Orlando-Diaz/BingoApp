@@ -21,14 +21,20 @@ data class Ganador(
  */
 object VerificadorGanadores {
 
-    /** Índices de la tabla que ya están marcados (el centro libre siempre cuenta). */
+    /** Índices de la tabla que ya están marcados. La LIBRE del centro nunca se marca. */
     fun casillasMarcadas(numeros: List<Int>, balotas: Set<Int>): Set<Int> =
         numeros.indices
-            .filter { it == ReglasBingo.INDICE_CENTRO || numeros[it] in balotas }
+            .filter { it != ReglasBingo.INDICE_CENTRO && numeros[it] in balotas }
             .toSet()
 
-    fun figuraCompleta(figura: String, marcadas: Set<Int>): Boolean =
-        figura.withIndex().all { (indice, c) -> c != '1' || indice in marcadas }
+    /**
+     * La figura está completa si todas sus casillas con número están marcadas.
+     * El centro se ignora: no ayuda a ganar, pero tampoco se exige.
+     */
+    fun figuraCompleta(figura: String, marcadas: Set<Int>): Boolean {
+        val requeridas = figura.indices.filter { it != ReglasBingo.INDICE_CENTRO && figura[it] == '1' }
+        return requeridas.isNotEmpty() && requeridas.all { it in marcadas }
+    }
 
     /**
      * Devuelve una entrada por cada tabla ganadora (con la primera figura que completó).

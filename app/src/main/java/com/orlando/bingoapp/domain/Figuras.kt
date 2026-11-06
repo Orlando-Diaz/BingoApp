@@ -47,7 +47,9 @@ object Figuras {
     const val NOMBRE_LLENO = "Cartón lleno"
     val VACIA = "0".repeat(25)
 
-    fun cantidadCasillas(figura: String): Int = figura.count { it == '1' }
+    /** Casillas que hay que completar (la LIBRE del centro nunca cuenta). */
+    fun cantidadCasillas(figura: String): Int =
+        figura.indices.count { it != ReglasBingo.INDICE_CENTRO && figura[it] == '1' }
 
     /**
      * Todas las posiciones donde cabe la figura moviéndola por la tabla.
@@ -70,7 +72,21 @@ object Figuras {
         }.distinct()
     }
 
-    /** Las figuras que realmente se revisan al verificar una jugada. */
-    fun expandir(figuras: List<String>, cualquierPosicion: Boolean): List<String> =
-        if (cualquierPosicion) figuras.flatMap { traslaciones(it) }.distinct() else figuras
+    fun usaCentro(figura: String): Boolean = figura[ReglasBingo.INDICE_CENTRO] == '1'
+
+    /**
+     * Las figuras que realmente se revisan al verificar una jugada.
+     *
+     * La casilla LIBRE del centro nunca sirve para ganar, así que al mover una figura
+     * por la tabla se descartan las posiciones que caen encima de ella:
+     * cuadrito de 4 -> 12 posiciones (no 16), línea horizontal -> 4 (no 5).
+     * Si la figura dibujada ya pasaba por el centro (ej: una X), el centro solo se ignora.
+     */
+    fun expandir(figuras: List<String>, cualquierPosicion: Boolean): List<String> {
+        if (!cualquierPosicion) return figuras
+        return figuras.flatMap { original ->
+            val posiciones = traslaciones(original)
+            if (usaCentro(original)) posiciones else posiciones.filterNot { usaCentro(it) }
+        }.distinct()
+    }
 }
