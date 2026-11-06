@@ -52,4 +52,18 @@ class LectorTablaTest {
         val conBasura = fotoPerfecta() + NumeroDetectado(0, 10f, 10f) + NumeroDetectado(99, 20f, 20f)
         assertEquals(esperada, LectorTabla.armar(conBasura))
     }
+
+    @Test
+    fun conPocosNumerosLeidosIgualQuedanEnSuFila() {
+        // Lo que pasó con la foto real: solo se leyeron 7 números y ninguna columna completa.
+        // Antes el 5 (fila del medio) quedaba arriba; ahora las filas se sacan por altura.
+        fun n(valor: Int, fila: Int, col: Int) = NumeroDetectado(valor, col * 100f + 50f, fila * 100f + 200f, alto = 40f)
+        val leidos = listOf(n(5, 2, 0), n(2, 3, 0), n(16, 2, 1), n(50, 2, 3), n(61, 0, 4), n(68, 2, 4), n(62, 4, 4))
+
+        val resultado = LectorTabla.armar(leidos)
+
+        val esperado = MutableList<Int?>(25) { null }
+        leidos.forEach { esperado[(((it.y - 200f) / 100f).toInt()) * 5 + ((it.x - 50f) / 100f).toInt()] = it.valor }
+        assertEquals(esperado, resultado)
+    }
 }

@@ -7,6 +7,8 @@ import com.google.android.gms.tasks.Task
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.orlando.bingoapp.domain.AgrupadorDigitos
+import com.orlando.bingoapp.domain.DigitoDetectado
 import com.orlando.bingoapp.domain.LectorTabla
 import com.orlando.bingoapp.domain.NumeroDetectado
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -37,17 +39,35 @@ class LectorFotoTabla(private val context: Context) {
         val imagen = InputImage.fromFilePath(context, uriPara(archivo))
         val texto = reconocedor.process(imagen).esperar()
 
-        val detectados = texto.textBlocks
-            .flatMap { it.lines }
-            .flatMap { it.elements }
-            .flatMap { elemento ->
+        val elementos = texto.textBlocks.flatMap { it.lines }.flatMap { it.elements }
+
+        // Cada dígito por separado (ML Kit los da como "symbols"), con su posición.
+        // Así se pueden separar números que ML Kit leyó pegados, como "25314661".
+        val digitos = elementos.flatMap { it.symbols }.mapNotNull { simbolo ->
+            val caracter = simbolo.text.singleOrNull()
+            val caja = simbolo.boundingBox
+            if (caracter == null || !caracter.isDigit() || caja == null) null
+            else DigitoDetectado(
+                digito = caracter.digitToInt(),
+                izquierda = caja.left.toFloat(),
+                arriba = caja.top.toFloat(),
+                derecha = caja.right.toFloat(),
+                abajo = caja.bottom.toFloat()
+            )
+        }
+
+        val detectados = if (digitos.isNotEmpty()) {
+            AgrupadorDigitos.agrupar(digitos)
+        } else {
+            // Respaldo: si no vinieron dígitos sueltos, se usa el texto de cada elemento
+            elementos.flatMap { elemento ->
                 val caja = elemento.boundingBox ?: return@flatMap emptyList()
-                // A veces ML Kit junta dos números ("12 27"): se separan por lo que no sea dígito
                 elemento.text.split(Regex("\\D+"))
                     .filter { it.length in 1..2 }
                     .mapNotNull { it.toIntOrNull() }
-                    .map { NumeroDetectado(it, caja.exactCenterX(), caja.exactCenterY()) }
+                    .map { NumeroDetectado(it, caja.exactCenterX(), caja.exactCenterY(), caja.height().toFloat()) }
             }
+        }
         return LectorTabla.armar(detectados)
     }
 
