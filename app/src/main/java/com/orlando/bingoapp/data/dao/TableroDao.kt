@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 import com.orlando.bingoapp.data.entity.Tabla
 import com.orlando.bingoapp.data.entity.Tablero
 import com.orlando.bingoapp.data.entity.TableroConTablas
@@ -38,4 +39,19 @@ interface TableroDao {
 
     @Delete
     suspend fun eliminar(tablero: Tablero)
+
+    // ---------- Ver y editar ----------
+
+    @Transaction
+    @Query("SELECT * FROM tableros WHERE id = :id")
+    fun observarPorId(id: Long): Flow<TableroConTablas?>
+
+    @Query("SELECT * FROM tablas WHERE id = :id")
+    suspend fun obtenerTabla(id: Long): Tabla?
+
+    @Update
+    suspend fun actualizarTabla(tabla: Tabla)
+
+    @Update
+    suspend fun actualizarTablero(tablero: Tablero)
 }

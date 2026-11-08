@@ -24,6 +24,10 @@ import com.orlando.bingoapp.ui.juego.JuegoScreen
 import com.orlando.bingoapp.ui.jugadas.EditorJugadaScreen
 import com.orlando.bingoapp.ui.jugadas.EditorJugadaViewModel
 import com.orlando.bingoapp.ui.jugadas.JugadasScreen
+import com.orlando.bingoapp.ui.tableros.DetalleTableroScreen
+import com.orlando.bingoapp.ui.tableros.DetalleTableroViewModel
+import com.orlando.bingoapp.ui.tableros.EditorTablaScreen
+import com.orlando.bingoapp.ui.tableros.EditorTablaViewModel
 import com.orlando.bingoapp.ui.tableros.ListaTablerosScreen
 import com.orlando.bingoapp.ui.tableros.RegistroTableroScreen
 import com.orlando.bingoapp.ui.tableros.RegistroTableroViewModel
@@ -41,7 +45,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Pantalla { JUEGO, COBRO, LISTA_TABLEROS, REGISTRO_TABLERO, JUGADAS, EDITOR_JUGADA }
+private enum class Pantalla { JUEGO, COBRO, LISTA_TABLEROS, REGISTRO_TABLERO, DETALLE_TABLERO, EDITOR_TABLA, JUGADAS, EDITOR_JUGADA }
 
 /** Navegación simple entre pantallas. Cuando haya más, pasamos a Navigation Compose. */
 @Composable
@@ -49,6 +53,8 @@ fun BingoApp() {
     var pantalla by rememberSaveable { mutableStateOf(Pantalla.JUEGO) }
     val registroViewModel: RegistroTableroViewModel = viewModel()
     val editorJugadaViewModel: EditorJugadaViewModel = viewModel()
+    val detalleTableroViewModel: DetalleTableroViewModel = viewModel()
+    val editorTablaViewModel: EditorTablaViewModel = viewModel()
 
     // Pantallas de formulario: ocupan toda la pantalla (sin barra inferior)
     when (pantalla) {
@@ -56,6 +62,24 @@ fun BingoApp() {
             RegistroTableroScreen(
                 viewModel = registroViewModel,
                 onSalir = { pantalla = Pantalla.LISTA_TABLEROS }
+            )
+            return
+        }
+        Pantalla.DETALLE_TABLERO -> {
+            DetalleTableroScreen(
+                viewModel = detalleTableroViewModel,
+                onEditarTabla = { tabla, numeroTablero ->
+                    editorTablaViewModel.cargar(tabla, numeroTablero)
+                    pantalla = Pantalla.EDITOR_TABLA
+                },
+                onSalir = { pantalla = Pantalla.LISTA_TABLEROS }
+            )
+            return
+        }
+        Pantalla.EDITOR_TABLA -> {
+            EditorTablaScreen(
+                viewModel = editorTablaViewModel,
+                onSalir = { pantalla = Pantalla.DETALLE_TABLERO }
             )
             return
         }
@@ -107,6 +131,10 @@ fun BingoApp() {
                     onNuevoTablero = {
                         registroViewModel.reiniciar()
                         pantalla = Pantalla.REGISTRO_TABLERO
+                    },
+                    onVerTablero = { id ->
+                        detalleTableroViewModel.cargar(id)
+                        pantalla = Pantalla.DETALLE_TABLERO
                     }
                 )
                 Pantalla.JUGADAS -> JugadasScreen(

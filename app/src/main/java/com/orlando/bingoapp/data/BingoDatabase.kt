@@ -46,6 +46,11 @@ abstract class BingoDatabase : RoomDatabase() {
     abstract fun tableroEnPartidaDao(): TableroEnPartidaDao
 
     companion object {
+        const val NOMBRE = "bingo.db"
+
+        /** Debe ser igual a "version" en @Database. Sirve para revisar las copias de seguridad. */
+        const val VERSION = 6
+
         @Volatile
         private var instancia: BingoDatabase? = null
 
@@ -69,10 +74,13 @@ abstract class BingoDatabase : RoomDatabase() {
         /** Una sola instancia para toda la app (como un @Bean singleton en Spring). */
         fun obtener(context: Context): BingoDatabase =
             instancia ?: synchronized(this) {
+                // Si se restauró una copia de seguridad, se aplica aquí: justo antes de
+                // abrir la base de datos, así nada la está usando mientras se reemplaza.
+                if (instancia == null) CopiaSeguridad.aplicarPendiente(context.applicationContext)
                 instancia ?: Room.databaseBuilder(
                     context.applicationContext,
                     BingoDatabase::class.java,
-                    "bingo.db"
+                    NOMBRE
                 )
                     .addMigrations(MIGRACION_1_2)
                     .build()

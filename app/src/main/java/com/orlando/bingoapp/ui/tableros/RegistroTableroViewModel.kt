@@ -10,6 +10,8 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.orlando.bingoapp.camara.LectorFotoTabla
+import com.orlando.bingoapp.camara.MENSAJE_FOTO_FALLIDA
+import com.orlando.bingoapp.camara.llenarCasillas
 import com.orlando.bingoapp.data.BingoDatabase
 import com.orlando.bingoapp.data.entity.Tabla
 import com.orlando.bingoapp.data.entity.Tablero
@@ -138,21 +140,11 @@ class RegistroTableroViewModel(application: Application) : AndroidViewModel(appl
             leyendoFoto = true
             mensajeFoto = null
             try {
-                val numeros = lector.leer(archivo)
-                val casillas = tablas[indiceTabla]
-                numeros.forEachIndexed { i, n ->
-                    if (i != ReglasBingo.INDICE_CENTRO) casillas[i] = n?.toString().orEmpty()
-                }
+                mensajeFoto = lector.llenarCasillas(archivo, tablas[indiceTabla])
                 fotos[indiceTabla] = archivo.path
-                val leidos = numeros.count { it != null }
                 mostrarVacias = true
-                mensajeFoto = if (leidos == 24) {
-                    "Se leyeron los 24 números. Compáralos con la foto antes de seguir."
-                } else {
-                    "Se leyeron $leidos de 24. Completa las casillas en rojo mirando la foto."
-                }
             } catch (e: Exception) {
-                mensajeFoto = "No se pudo leer la foto. Intenta de nuevo con más luz o escribe los números."
+                mensajeFoto = MENSAJE_FOTO_FALLIDA
             } finally {
                 leyendoFoto = false
             }

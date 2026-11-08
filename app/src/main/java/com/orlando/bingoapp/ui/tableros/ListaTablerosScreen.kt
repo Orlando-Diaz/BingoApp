@@ -1,5 +1,6 @@
 package com.orlando.bingoapp.ui.tableros
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,13 +37,20 @@ import com.orlando.bingoapp.data.entity.TableroConTablas
 @Composable
 fun ListaTablerosScreen(
     onNuevoTablero: () -> Unit,
+    onVerTablero: (Long) -> Unit,
     viewModel: TablerosViewModel = viewModel()
 ) {
     val tableros by viewModel.tableros.collectAsStateWithLifecycle()
     var aEliminar by remember { mutableStateOf<TableroConTablas?>(null) }
+    var menuCopia by remember { mutableStateOf(false) }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Tableros (${tableros.size})") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Tableros (${tableros.size})") },
+                actions = { TextButton(onClick = { menuCopia = true }) { Text("Copia") } }
+            )
+        },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = onNuevoTablero) { Text("+  Nuevo tablero") }
         }
@@ -62,7 +70,11 @@ fun ListaTablerosScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(tableros, key = { it.tablero.id }) { item ->
-                    TarjetaTablero(item, onEliminar = { aEliminar = item })
+                    TarjetaTablero(
+                        item = item,
+                        onVer = { onVerTablero(item.tablero.id) },
+                        onEliminar = { aEliminar = item }
+                    )
                 }
             }
         }
@@ -83,19 +95,24 @@ fun ListaTablerosScreen(
             dismissButton = { TextButton(onClick = { aEliminar = null }) { Text("Cancelar") } }
         )
     }
+
+    if (menuCopia) {
+        DialogoCopia(viewModel = viewModel, onCerrar = { menuCopia = false })
+    }
 }
 
 @Composable
-private fun TarjetaTablero(item: TableroConTablas, onEliminar: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun TarjetaTablero(item: TableroConTablas, onVer: () -> Unit, onEliminar: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onVer)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
                 Text("Tablero ${item.tablero.numero}", style = MaterialTheme.typography.titleLarge)
-                Text("${item.tablas.size} tablas", style = MaterialTheme.typography.bodyMedium)
+                Text("${item.tablas.size} tablas · toca para ver y editar", style = MaterialTheme.typography.bodyMedium)
             }
+            TextButton(onClick = onVer) { Text("Ver") }
             TextButton(onClick = onEliminar) { Text("Eliminar") }
         }
     }

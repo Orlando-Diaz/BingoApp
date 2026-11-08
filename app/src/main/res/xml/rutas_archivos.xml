@@ -2,4 +2,6 @@
 <!-- Carpetas que el FileProvider puede compartir con la app de cámara -->
 <paths>
     <files-path name="fotos" path="fotos/" />
+    <!-- Copias de seguridad que se comparten por WhatsApp, Drive, etc. -->
+    <cache-path name="copias" path="copias/" />
 </paths>
