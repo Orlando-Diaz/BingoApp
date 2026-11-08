@@ -3,6 +3,7 @@ package com.orlando.bingoapp.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
+import android.provider.OpenableColumns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -62,49 +63,68 @@ class CopiaSeguridad(private val context: Context) {
      * Devuelve null si quedó lista, o un mensaje de error.
      */
     suspend fun prepararRestauracion(uri: Uri): String? = withContext(Dispatchers.IO) {
-        val pendiente = carpetaPendiente(context).apply {
+        val pendiente = carpetaPendiente(context).apply { deleteRecursively() }
+        val extraido = File(context.cacheDir, "extraido").apply {
             deleteRecursively()
             mkdirs()
         }
+        val nombre = nombreDelArchivo(uri)
         try {
+            // 1. Descomprimir en una carpeta temporal
             val entrada = context.contentResolver.openInputStream(uri)
-                ?: return@withContext fallar(pendiente, "No se pudo abrir el archivo")
+                ?: return@withContext "No se pudo abrir el archivo \"$nombre\""
+            val contenido = mutableListOf<String>()
             ZipInputStream(entrada.buffered()).use { zip ->
                 var item = zip.nextEntry
                 while (item != null) {
-                    val destino = File(pendiente, item.name)
+                    val destino = File(extraido, item.name)
                     // Seguridad: que ningún archivo del zip se salga de la carpeta
-                    if (!destino.canonicalPath.startsWith(pendiente.canonicalPath + File.separator)) {
-                        return@withContext fallar(pendiente, "El archivo no es una copia válida")
+                    if (!destino.canonicalPath.startsWith(extraido.canonicalPath + File.separator)) {
+                        return@withContext "El archivo \"$nombre\" no es una copia válida"
                     }
                     if (!item.isDirectory) {
                         destino.parentFile?.mkdirs()
                         destino.outputStream().use { zip.copyTo(it) }
+                        contenido += item.name
                     }
                     item = zip.nextEntry
                 }
             }
 
-            // Revisar que de verdad sea una copia de BingoApp y de una versión compatible
-            val base = File(pendiente, BASE_DE_DATOS)
-            if (!base.exists()) return@withContext fallar(pendiente, "Ese archivo no es una copia de BingoApp")
+            // 2. Buscar la base de datos, aunque venga dentro de una carpeta
+            //    (pasa si alguna app descomprimió y volvió a comprimir el archivo)
+            if (contenido.isEmpty()) {
+                return@withContext "\"$nombre\" no es un archivo .zip. Elige el archivo BingoApp_copia_….zip"
+            }
+            val base = extraido.walkTopDown().firstOrNull { it.isFile && it.name == BASE_DE_DATOS }
+                ?: return@withContext "\"$nombre\" no tiene los datos de BingoApp. Trae: " +
+                    contenido.take(5).joinToString(", ") + if (contenido.size > 5) "…" else ""
+
+            // 3. Revisar que la versión sea compatible
             val version = SQLiteDatabase.openDatabase(base.path, null, SQLiteDatabase.OPEN_READONLY).use { it.version }
             if (version > BingoDatabase.VERSION) {
-                return@withContext fallar(
-                    pendiente,
-                    "La copia viene de una versión más nueva de BingoApp. Actualiza la app en este celular primero."
-                )
+                return@withContext "La copia viene de una versión más nueva de BingoApp. Actualiza la app en este celular primero."
             }
+
+            // 4. Dejarla lista para aplicarla al reiniciar
+            base.parentFile!!.copyRecursively(pendiente, overwrite = true)
             null
         } catch (e: Exception) {
-            fallar(pendiente, "No se pudo leer la copia: el archivo parece dañado")
+            pendiente.deleteRecursively()
+            "No se pudo leer \"$nombre\": el archivo parece dañado"
+        } finally {
+            extraido.deleteRecursively()
         }
     }
 
-    private fun fallar(pendiente: File, mensaje: String): String {
-        pendiente.deleteRecursively()
-        return mensaje
-    }
+    /** El nombre con el que la persona ve el archivo (ej: "BingoApp_copia_2026-11-08.zip"). */
+    private fun nombreDelArchivo(uri: Uri): String =
+        try {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        } catch (e: Exception) {
+            null
+        } ?: "el archivo"
 
     private fun agregar(zip: ZipOutputStream, archivo: File, nombre: String) {
         if (!archivo.exists()) return
