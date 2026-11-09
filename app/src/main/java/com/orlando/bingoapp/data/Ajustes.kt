@@ -52,7 +52,15 @@ class Ajustes(context: Context) {
             prefs.edit().putFloat(CLAVE_TONO, valor).apply()
         }
 
+    /** Huella (hash) del patrón que protege la pestaña Tableros; null = todavía no se ha creado. */
+    var patronTableros: String?
+        get() = prefs.getString(CLAVE_PATRON, null)
+        set(valor) {
+            prefs.edit().putString(CLAVE_PATRON, valor).commit()
+        }
+
     private companion object {
+        const val CLAVE_PATRON = "patron_tableros"
         const val CLAVE_VOZ_NOMBRE = "voz_nombre"
         const val CLAVE_TONO = "tono_voz"
         const val CLAVE_SENCILLO = "precio4_sencillo"

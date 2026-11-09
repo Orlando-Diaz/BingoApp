@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -41,7 +40,6 @@ fun ListaTablerosScreen(
     viewModel: TablerosViewModel = viewModel()
 ) {
     val tableros by viewModel.tableros.collectAsStateWithLifecycle()
-    var aEliminar by remember { mutableStateOf<TableroConTablas?>(null) }
     var menuCopia by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -70,30 +68,10 @@ fun ListaTablerosScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(tableros, key = { it.tablero.id }) { item ->
-                    TarjetaTablero(
-                        item = item,
-                        onVer = { onVerTablero(item.tablero.id) },
-                        onEliminar = { aEliminar = item }
-                    )
+                    TarjetaTablero(item = item, onVer = { onVerTablero(item.tablero.id) })
                 }
             }
         }
-    }
-
-    // Confirmación antes de borrar (borra también sus tablas)
-    aEliminar?.let { item ->
-        AlertDialog(
-            onDismissRequest = { aEliminar = null },
-            title = { Text("¿Eliminar tablero ${item.tablero.numero}?") },
-            text = { Text("Se borrarán también sus ${item.tablas.size} tablas.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.eliminar(item.tablero)
-                    aEliminar = null
-                }) { Text("Eliminar") }
-            },
-            dismissButton = { TextButton(onClick = { aEliminar = null }) { Text("Cancelar") } }
-        )
     }
 
     if (menuCopia) {
@@ -102,7 +80,8 @@ fun ListaTablerosScreen(
 }
 
 @Composable
-private fun TarjetaTablero(item: TableroConTablas, onVer: () -> Unit, onEliminar: () -> Unit) {
+/** Un tablero de la lista. Para eliminarlo hay que entrar a su detalle (así no se borra por un toque). */
+private fun TarjetaTablero(item: TableroConTablas, onVer: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onVer)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -113,7 +92,6 @@ private fun TarjetaTablero(item: TableroConTablas, onVer: () -> Unit, onEliminar
                 Text("${item.tablas.size} tablas · toca para ver y editar", style = MaterialTheme.typography.bodyMedium)
             }
             TextButton(onClick = onVer) { Text("Ver") }
-            TextButton(onClick = onEliminar) { Text("Eliminar") }
         }
     }
 }

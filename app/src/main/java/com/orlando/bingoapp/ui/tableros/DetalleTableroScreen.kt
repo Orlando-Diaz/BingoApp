@@ -102,15 +102,34 @@ fun DetalleTableroScreen(
     }
 
     if (eliminando) {
+        val numero = tablero?.tablero?.numero
+        var confirmacion by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { eliminando = false },
-            title = { Text("¿Eliminar el tablero ${tablero?.tablero?.numero}?") },
-            text = { Text("Se borran sus tablas y sale de la lista de cobro. No se puede deshacer.") },
+            title = { Text("¿Eliminar el tablero $numero?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Se borran sus tablas y no se puede deshacer. Si solo no va a jugar esta ronda, " +
+                            "quítalo en Cobro, no aquí."
+                    )
+                    Text("Para confirmar, escribe el número del tablero:")
+                    OutlinedTextField(
+                        value = confirmacion,
+                        onValueChange = { confirmacion = it.filter(Char::isDigit).take(4) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            },
             confirmButton = {
-                TextButton(onClick = {
-                    eliminando = false
-                    viewModel.eliminar(alTerminar = onSalir)
-                }) { Text("Eliminar") }
+                TextButton(
+                    onClick = {
+                        eliminando = false
+                        viewModel.eliminar(alTerminar = onSalir)
+                    },
+                    enabled = confirmacion == numero?.toString()
+                ) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { eliminando = false }) { Text("Cancelar") } }
         )

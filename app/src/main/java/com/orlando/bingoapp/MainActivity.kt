@@ -12,6 +12,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -24,6 +25,7 @@ import com.orlando.bingoapp.ui.juego.JuegoScreen
 import com.orlando.bingoapp.ui.jugadas.EditorJugadaScreen
 import com.orlando.bingoapp.ui.jugadas.EditorJugadaViewModel
 import com.orlando.bingoapp.ui.jugadas.JugadasScreen
+import com.orlando.bingoapp.ui.seguridad.BloqueoTablerosScreen
 import com.orlando.bingoapp.ui.tableros.DetalleTableroScreen
 import com.orlando.bingoapp.ui.tableros.DetalleTableroViewModel
 import com.orlando.bingoapp.ui.tableros.EditorTablaScreen
@@ -51,6 +53,14 @@ private enum class Pantalla { JUEGO, COBRO, LISTA_TABLEROS, REGISTRO_TABLERO, DE
 @Composable
 fun BingoApp() {
     var pantalla by rememberSaveable { mutableStateOf(Pantalla.JUEGO) }
+
+    // La pestaña Tableros pide patrón; al ir a otra pestaña se vuelve a bloquear
+    var tablerosDesbloqueado by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(pantalla) {
+        if (pantalla in listOf(Pantalla.JUEGO, Pantalla.COBRO, Pantalla.JUGADAS, Pantalla.EDITOR_JUGADA)) {
+            tablerosDesbloqueado = false
+        }
+    }
     val registroViewModel: RegistroTableroViewModel = viewModel()
     val editorJugadaViewModel: EditorJugadaViewModel = viewModel()
     val detalleTableroViewModel: DetalleTableroViewModel = viewModel()
@@ -127,7 +137,9 @@ fun BingoApp() {
         Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
             when (pantalla) {
                 Pantalla.COBRO -> CobroScreen(onEmpezar = { pantalla = Pantalla.JUEGO })
-                Pantalla.LISTA_TABLEROS -> ListaTablerosScreen(
+                Pantalla.LISTA_TABLEROS -> if (!tablerosDesbloqueado) {
+                    BloqueoTablerosScreen(onDesbloqueado = { tablerosDesbloqueado = true })
+                } else ListaTablerosScreen(
                     onNuevoTablero = {
                         registroViewModel.reiniciar()
                         pantalla = Pantalla.REGISTRO_TABLERO
