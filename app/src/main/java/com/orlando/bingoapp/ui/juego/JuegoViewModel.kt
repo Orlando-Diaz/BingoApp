@@ -48,8 +48,6 @@ data class EstadoJuego(
     val terminada: Boolean get() = premios.isNotEmpty() && premioActual == null
     val esLlena: Boolean get() = premios.size > 1
 
-    fun valorPremio(premio: Premio): Int = Dinero.porcentaje(recaudo, premio.porcentaje)
-
     /** Los que completaron justo con la última balota: los ganadores normales. */
     val conLaUltima: List<Ganador> get() = posiblesGanadores.filter { it.balotasAlCompletar == balotas.size }
 
@@ -58,8 +56,11 @@ data class EstadoJuego(
         if (premio.figuras.isEmpty()) modos.map { it.nombre } else listOf(premio.nombre)
 }
 
-/** Un premio intermedio de la llena: la figura se dibuja al iniciar la partida. */
-data class PremioIntermedio(val nombre: String, val figura: String, val porcentaje: Int)
+/**
+ * Un premio intermedio de la llena: la figura se dibuja al iniciar la partida.
+ * El valor del premio lo decide tu papá; la app no lo calcula.
+ */
+data class PremioIntermedio(val nombre: String, val figura: String)
 
 data class TablaVerificada(val posicion: Int, val numeros: List<Int>, val ganadora: Ganador?)
 data class Verificacion(
@@ -125,7 +126,7 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- Modo automático: la app saca, marca y canta las balotas ----------
 
-    private val cantor = CantorBalotas(application)
+    private val cantor = CantorBalotas(application, ajustes.vozNombre, ajustes.tonoVoz)
     private var trabajoAutomatico: Job? = null
 
     var automatico by mutableStateOf(false)
@@ -135,6 +136,10 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     var segundosEntreBalotas by mutableStateOf(ajustes.segundosEntreBalotas)
         private set
     var vozActiva by mutableStateOf(ajustes.vozActiva)
+        private set
+    var vozElegida by mutableStateOf(ajustes.vozNombre)
+        private set
+    var tonoVoz by mutableStateOf(ajustes.tonoVoz)
         private set
 
     /** null mientras arranca la voz; false si el celular no tiene voz en español. */
@@ -180,6 +185,31 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     fun cambiarSegundos(segundos: Int) {
         segundosEntreBalotas = segundos
         ajustes.segundosEntreBalotas = segundos
+    }
+
+    fun voces() = cantor.vocesEnEspanol()
+
+    /** Elige una voz y canta una balota de prueba para escucharla. */
+    fun elegirVoz(nombre: String) {
+        vozElegida = nombre
+        ajustes.vozNombre = nombre
+        cantor.usarVoz(nombre)
+        probarVoz()
+    }
+
+    fun cambiarTono(tono: Float) {
+        tonoVoz = tono
+        cantor.cambiarTono(tono)
+    }
+
+    /** Se llama al soltar la barra del tono: lo guarda y canta una prueba. */
+    fun guardarTono() {
+        ajustes.tonoVoz = tonoVoz
+        probarVoz()
+    }
+
+    fun probarVoz() {
+        viewModelScope.launch { cantor.decir(SorteoBalotas.textoParaCantar(7)) }
     }
 
     fun cambiarVoz(activa: Boolean) {
@@ -240,12 +270,12 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             candado.withLock {
                 val premios = intermedios.mapIndexed { i, p ->
-                    Premio(orden = i + 1, nombre = p.nombre, figuras = listOf(p.figura), porcentaje = p.porcentaje)
+                    Premio(orden = i + 1, nombre = p.nombre, figuras = listOf(p.figura), porcentaje = 0)
                 } + Premio(
                     orden = intermedios.size + 1,
                     nombre = Figuras.NOMBRE_LLENO,
                     figuras = Figuras.LLENO,
-                    porcentaje = 100 - intermedios.sumOf { it.porcentaje }
+                    porcentaje = 0
                 )
                 crearPartida(premios, ajustes.precioCuatroLlena)
             }

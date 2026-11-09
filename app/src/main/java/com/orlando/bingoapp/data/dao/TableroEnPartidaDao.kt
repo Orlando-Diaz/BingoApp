@@ -43,10 +43,10 @@ interface TableroEnPartidaDao {
     )
     fun observarDePartidaActual(): Flow<List<TableroEnPartida>>
 
-    /** Copia la lista de una ronda a la siguiente, todos como pendientes de pago. */
+    /** Copia a la ronda nueva los tableros que estaban jugando en la anterior (ya seleccionados). */
     @Query(
         "INSERT OR IGNORE INTO tableros_en_partida (partidaId, tableroId, pagado) " +
-            "SELECT :nueva, tableroId, 0 FROM tableros_en_partida WHERE partidaId = :anterior"
+            "SELECT :nueva, tableroId, 1 FROM tableros_en_partida WHERE partidaId = :anterior AND pagado = 1"
     )
     suspend fun copiarLista(anterior: Long, nueva: Long)
 }

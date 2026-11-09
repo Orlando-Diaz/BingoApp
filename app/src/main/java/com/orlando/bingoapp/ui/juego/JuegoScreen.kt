@@ -26,6 +26,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -365,7 +366,7 @@ private fun AvisoSinPagos(onIrACobro: () -> Unit) {
     ) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Ningún tablero ha pagado: la app no puede revisar ganadores.",
+                "No hay tableros jugando: selecciónalos en Cobro para que la app revise ganadores.",
                 modifier = Modifier.weight(1f),
                 color = MaterialTheme.colorScheme.onErrorContainer
             )
@@ -381,7 +382,7 @@ private fun InfoRonda(estado: EstadoJuego) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (estado.esLlena) {
-                Text("Premio en juego: ${premio.nombre} · ${Dinero.formato(estado.valorPremio(premio))}", style = MaterialTheme.typography.titleSmall)
+                Text("Premio en juego: ${premio.nombre}", style = MaterialTheme.typography.titleSmall)
                 estado.premios.filter { it.ganado }.forEach { p ->
                     Text("✓ ${p.nombre}: ${p.ganadores.orEmpty()}", style = MaterialTheme.typography.bodyMedium)
                     p.dejaronPasar?.let {
@@ -406,7 +407,7 @@ private fun TarjetaTerminada(estado: EstadoJuego, onNueva: () -> Unit) {
             Text("Ronda terminada", style = MaterialTheme.typography.titleLarge)
             estado.premios.forEach { p ->
                 Text(
-                    "${p.nombre} (${Dinero.formato(estado.valorPremio(p))}): ${p.ganadores.orEmpty()} — con ${p.balotasAlGanar ?: 0} balotas",
+                    "${p.nombre}: ${p.ganadores.orEmpty()} — con ${p.balotasAlGanar ?: 0} balotas",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 p.dejaronPasar?.let {
@@ -478,6 +479,9 @@ private fun TarjetaGanadores(estado: EstadoJuego, onConfirmar: (List<Ganador>) -
 /** Controles del modo automático: la app saca, marca y canta las balotas sola. */
 @Composable
 private fun ControlAutomatico(viewModel: JuegoViewModel, hayBalotas: Boolean) {
+    var eligiendoVoz by remember { mutableStateOf(false) }
+    if (eligiendoVoz) DialogoVoces(viewModel, onCerrar = { eligiendoVoz = false })
+
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -506,6 +510,7 @@ private fun ControlAutomatico(viewModel: JuegoViewModel, hayBalotas: Boolean) {
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Cantar en voz alta", modifier = Modifier.weight(1f))
+                TextButton(onClick = { eligiendoVoz = true }) { Text("🎙 Elegir voz") }
                 Switch(checked = viewModel.vozActiva, onCheckedChange = viewModel::cambiarVoz)
             }
             if (viewModel.vozActiva && viewModel.vozDisponible == false) {
@@ -517,4 +522,58 @@ private fun ControlAutomatico(viewModel: JuegoViewModel, hayBalotas: Boolean) {
             }
         }
     }
+}
+
+/**
+ * Menú de voces: al tocar una se escucha una balota de prueba.
+ * El tono permite hacer cualquier voz más grave (más masculina) o más aguda.
+ */
+@Composable
+private fun DialogoVoces(viewModel: JuegoViewModel, onCerrar: () -> Unit) {
+    val voces = remember { viewModel.voces() }
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        title = { Text("Voz que canta") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    "Toca una voz para escucharla. Android no indica si es de hombre o de mujer, así que pruébalas.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (voces.isEmpty()) {
+                    Text("No se encontraron voces en español.", color = MaterialTheme.colorScheme.error)
+                }
+                voces.forEach { opcion ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { viewModel.elegirVoz(opcion.nombre) },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = opcion.nombre == viewModel.vozElegida, onClick = { viewModel.elegirVoz(opcion.nombre) })
+                        Text(opcion.etiqueta)
+                    }
+                }
+                Text("Tono", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+                Slider(
+                    value = viewModel.tonoVoz,
+                    onValueChange = viewModel::cambiarTono,
+                    onValueChangeFinished = viewModel::guardarTono,
+                    valueRange = 0.5f..1.5f
+                )
+                Row {
+                    Text("Más grave", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    Text("Más aguda", style = MaterialTheme.typography.bodySmall)
+                }
+                Text(
+                    "¿Pocas voces? En los ajustes del celular busca \"Texto a voz\" → Motor de Google → " +
+                        "Instalar datos de voz → Español. Ahí se descargan más voces, incluidas de hombre.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onCerrar) { Text("Listo") } }
+    )
 }

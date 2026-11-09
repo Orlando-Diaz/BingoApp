@@ -1,27 +1,31 @@
 package com.orlando.bingoapp.ui.cobro
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -36,17 +40,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.orlando.bingoapp.data.entity.Tablero
 import com.orlando.bingoapp.domain.Dinero
 
 /**
- * Cobro de la ronda: la lista de tableros que están jugando (se copia de la ronda anterior)
- * y si cada uno ya pagó. Al terminar, "Empezar a jugar" lleva a la pantalla de juego.
+ * Cobro de la ronda como un tablero de números: aparecen TODOS los tableros
+ * registrados y se toca cada uno que va a jugar. En la ronda siguiente quedan
+ * seleccionados los mismos; "Limpiar" los quita todos.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,9 +61,7 @@ fun CobroScreen(
 ) {
     val estado by viewModel.estado.collectAsStateWithLifecycle()
     var editandoPrecios by remember { mutableStateOf(false) }
-    var cambiando by remember { mutableStateOf<FilaCobro?>(null) }
-    var quitando by remember { mutableStateOf<FilaCobro?>(null) }
-    var vaciando by remember { mutableStateOf(false) }
+    var limpiando by remember { mutableStateOf(false) }
     val enRonda = estado.partida != null && estado.hayPremios
 
     Scaffold(
@@ -73,11 +76,12 @@ fun CobroScreen(
                 Surface(tonalElevation = 3.dp) {
                     Button(
                         onClick = onEmpezar,
-                        enabled = estado.pagados > 0,
+                        enabled = estado.jugando.isNotEmpty(),
                         modifier = Modifier.fillMaxWidth().padding(12.dp).height(56.dp)
                     ) {
                         Text(
-                            if (estado.pagados > 0) "Empezar a jugar · ${estado.pagados} tableros" else "Nadie ha pagado todavía",
+                            if (estado.jugando.isNotEmpty()) "Empezar a jugar · ${estado.jugando.size} tableros"
+                            else "Toca los tableros que van a jugar",
                             fontSize = 18.sp
                         )
                     }
@@ -85,51 +89,37 @@ fun CobroScreen(
             }
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            when {
-                estado.cargando -> {}
-                !enRonda -> Text(
-                    "Primero toca \"Nueva\" en la pestaña Juego y elige sencillo o llena; " +
-                        "la app te trae aquí para cobrar.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 24.dp)
-                )
-                else -> {
-                    Resumen(estado)
-                    AgregarTablero(viewModel)
-
-                    if (estado.pendientes > 0) {
-                        Button(onClick = viewModel::todosPagaron, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                            Text("✓ Todos pagaron (${estado.pendientes} pendientes)", fontSize = 17.sp)
-                        }
-                    }
-
-                    if (estado.filas.isEmpty()) {
-                        Text(
-                            "La lista está vacía. Escribe el número de cada tablero que vendas y toca Agregar.",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    } else {
-                        Text("Toca \"Pagó / Debe\" para cambiarlo", style = MaterialTheme.typography.bodySmall)
-                        estado.filas.forEach { fila ->
-                            FilaTablero(
-                                fila = fila,
-                                valor = estado.valor(fila),
-                                onPago = { viewModel.alternarPago(fila) },
-                                onCambiar = { cambiando = fila },
-                                onQuitar = { quitando = fila }
-                            )
-                        }
-                        TextButton(onClick = { vaciando = true }) { Text("Vaciar lista (nueva noche)") }
-                    }
-                    Box(Modifier.height(8.dp))
+        when {
+            estado.cargando -> {}
+            !enRonda -> Text(
+                "Primero toca \"Nueva\" en la pestaña Juego y elige sencillo o llena; " +
+                    "la app te trae aquí para cobrar.",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(padding).padding(24.dp)
+            )
+            estado.tableros.isEmpty() -> Text(
+                "No hay tableros registrados. Regístralos en la pestaña Tableros.",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(padding).padding(24.dp)
+            )
+            else -> LazyVerticalGrid(
+                // Tantas columnas como quepan, de mínimo 64 dp cada una
+                columns = GridCells.Adaptive(minSize = 64.dp),
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // El resumen ocupa toda la fila (span = todas las columnas)
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Resumen(estado, onLimpiar = { limpiando = true })
+                }
+                items(estado.tableros, key = { it.id }) { tablero ->
+                    CasillaTablero(
+                        tablero = tablero,
+                        jugando = tablero.id in estado.jugando,
+                        onToque = { viewModel.alternar(tablero) }
+                    )
                 }
             }
         }
@@ -147,47 +137,24 @@ fun CobroScreen(
         )
     }
 
-    cambiando?.let { fila ->
-        DialogoCambiar(
-            fila = fila,
-            onCambiar = { numero -> viewModel.cambiar(fila, numero).also { if (it == null) cambiando = null } },
-            onCancelar = { cambiando = null }
-        )
-    }
-
-    quitando?.let { fila ->
+    if (limpiando) {
         AlertDialog(
-            onDismissRequest = { quitando = null },
-            title = { Text("¿Quitar el tablero ${fila.numero}?") },
-            text = { Text("Sale de la lista: ya no juega esta ronda ni las siguientes.") },
+            onDismissRequest = { limpiando = false },
+            title = { Text("¿Limpiar la selección?") },
+            text = { Text("Se quitan todos los tableros seleccionados. Úsalo al empezar una noche nueva.") },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.quitar(fila)
-                    quitando = null
-                }) { Text("Quitar") }
+                    viewModel.limpiar()
+                    limpiando = false
+                }) { Text("Limpiar") }
             },
-            dismissButton = { TextButton(onClick = { quitando = null }) { Text("Cancelar") } }
-        )
-    }
-
-    if (vaciando) {
-        AlertDialog(
-            onDismissRequest = { vaciando = false },
-            title = { Text("¿Vaciar la lista?") },
-            text = { Text("Se quitan todos los tableros. Úsalo al empezar una noche nueva.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.vaciarLista()
-                    vaciando = false
-                }) { Text("Vaciar") }
-            },
-            dismissButton = { TextButton(onClick = { vaciando = false }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { limpiando = false }) { Text("Cancelar") } }
         )
     }
 }
 
 @Composable
-private fun Resumen(estado: EstadoCobro) {
+private fun Resumen(estado: EstadoCobro, onLimpiar: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -200,7 +167,7 @@ private fun Resumen(estado: EstadoCobro) {
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
             Text(
-                "${estado.pagados} de ${estado.filas.size} tableros pagaron",
+                "${estado.jugando.size} de ${estado.tableros.size} tableros jugando",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
@@ -208,107 +175,46 @@ private fun Resumen(estado: EstadoCobro) {
                 "Tablero de 4: ${Dinero.formato(estado.precioCuatro)} · de 8: ${Dinero.formato(estado.precioCuatro * 2)}",
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
-        }
-    }
-}
-
-@Composable
-private fun AgregarTablero(viewModel: CobroViewModel) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = viewModel.numeroTexto,
-            onValueChange = viewModel::cambiarNumero,
-            label = { Text("Número del tablero") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { viewModel.agregar() }),
-            modifier = Modifier.weight(1f)
-        )
-        Button(onClick = viewModel::agregar, enabled = viewModel.numeroTexto.isNotEmpty()) { Text("Agregar") }
-    }
-    viewModel.mensaje?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-}
-
-/** Un tablero de la lista: botón grande Pagó/Debe, y opciones de cambiar o quitar. */
-@Composable
-private fun FilaTablero(
-    fila: FilaCobro,
-    valor: Int,
-    onPago: () -> Unit,
-    onCambiar: () -> Unit,
-    onQuitar: () -> Unit
-) {
-    val colores = MaterialTheme.colorScheme
-    Card(Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("Tablero ${fila.numero}", style = MaterialTheme.typography.titleLarge)
-                Text("${fila.cantidadTablas} tablas · ${Dinero.formato(valor)}", style = MaterialTheme.typography.bodyMedium)
-                Row {
-                    TextButton(onClick = onCambiar) { Text("Cambiar") }
-                    TextButton(onClick = onQuitar) { Text("Quitar") }
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .width(96.dp)
-                    .height(64.dp)
-                    .background(if (fila.pagado) colores.primary else colores.errorContainer, RoundedCornerShape(12.dp))
-                    .clickable(onClick = onPago),
-                contentAlignment = Alignment.Center
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (fila.pagado) "✓ Pagó" else "Debe",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (fila.pagado) colores.onPrimary else colores.onErrorContainer
+                    "Toca los tableros que juegan",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.weight(1f)
                 )
+                OutlinedButton(onClick = onLimpiar, enabled = estado.jugando.isNotEmpty()) { Text("Limpiar") }
             }
         }
     }
 }
 
-/** Cambiar el tablero de una persona por otro que esté libre. */
+/** Un tablero en la cuadrícula: número grande; pintado y con ✓ si está jugando. */
 @Composable
-private fun DialogoCambiar(
-    fila: FilaCobro,
-    onCambiar: (Int) -> String?,
-    onCancelar: () -> Unit
-) {
-    var numero by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text("Cambiar el tablero ${fila.numero}") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("¿Por cuál tablero lo cambia? Se conserva si ya pagó.")
-                OutlinedTextField(
-                    value = numero,
-                    onValueChange = {
-                        numero = it.filter(Char::isDigit).take(4)
-                        error = null
-                    },
-                    label = { Text("Número del tablero nuevo") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { numero.toIntOrNull()?.let { error = onCambiar(it) } },
-                enabled = numero.isNotEmpty()
-            ) { Text("Cambiar") }
-        },
-        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } }
-    )
+private fun CasillaTablero(tablero: Tablero, jugando: Boolean, onToque: () -> Unit) {
+    val colores = MaterialTheme.colorScheme
+    val forma = RoundedCornerShape(12.dp)
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .background(if (jugando) colores.primary else colores.surface, forma)
+            .border(if (jugando) 0.dp else 1.dp, colores.outlineVariant, forma)
+            .clickable(onClick = onToque),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "${tablero.numero}",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (jugando) colores.onPrimary else colores.onSurface
+            )
+            Text(
+                if (jugando) "✓ ${tablero.cantidadTablas}" else "${tablero.cantidadTablas} tablas",
+                fontSize = 10.sp,
+                color = if (jugando) colores.onPrimary else colores.onSurfaceVariant
+            )
+        }
+    }
 }
 
 @Composable

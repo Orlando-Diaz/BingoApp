@@ -38,7 +38,23 @@ class Ajustes(context: Context) {
             prefs.edit().putBoolean(CLAVE_VOZ, valor).apply()
         }
 
+    /** Nombre de la voz elegida en el menú de voces (null = la de por defecto). */
+    var vozNombre: String?
+        get() = prefs.getString(CLAVE_VOZ_NOMBRE, null)
+        set(valor) {
+            prefs.edit().putString(CLAVE_VOZ_NOMBRE, valor).apply()
+        }
+
+    /** Tono de la voz: 1 = normal, menos = más grave. */
+    var tonoVoz: Float
+        get() = prefs.getFloat(CLAVE_TONO, 1f)
+        set(valor) {
+            prefs.edit().putFloat(CLAVE_TONO, valor).apply()
+        }
+
     private companion object {
+        const val CLAVE_VOZ_NOMBRE = "voz_nombre"
+        const val CLAVE_TONO = "tono_voz"
         const val CLAVE_SENCILLO = "precio4_sencillo"
         const val CLAVE_LLENA = "precio4_llena"
         const val CLAVE_SEGUNDOS = "segundos_entre_balotas"

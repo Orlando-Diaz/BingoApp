@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -54,12 +53,12 @@ fun DialogoNuevaPartida(
 private class PremioEnEdicion(numero: Int) {
     var nombre by mutableStateOf("Premio $numero")
     var figura by mutableStateOf(Figuras.VACIA)
-    var porcentajeTexto by mutableStateOf("")
 }
 
 /**
  * Configurar la llena: 1 o 2 premios intermedios. Para cada uno se DIBUJA
- * la figura en ese momento y se pone el porcentaje. El cartón lleno se lleva lo que sobre.
+ * la figura en ese momento. Al final siempre se juega el cartón lleno.
+ * El valor de cada premio lo decide tu papá; la app no lo calcula.
  */
 @Composable
 fun DialogoConfigurarLlena(
@@ -91,14 +90,6 @@ fun DialogoConfigurarLlena(
                         onToque = { premio.figura = alternarCasilla(premio.figura, it) },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    OutlinedTextField(
-                        value = premio.porcentajeTexto,
-                        onValueChange = { premio.porcentajeTexto = it.filter(Char::isDigit).take(2) },
-                        label = { Text("Porcentaje del premio (%)") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.width(220.dp)
-                    )
                     HorizontalDivider()
                 }
 
@@ -111,24 +102,20 @@ fun DialogoConfigurarLlena(
                     }
                 }
 
-                val suma = premios.sumOf { it.porcentajeTexto.toIntOrNull() ?: 0 }
-                Text("Cartón lleno: ${100 - suma}% del premio", style = MaterialTheme.typography.titleMedium)
+                Text("Y al final: cartón lleno", style = MaterialTheme.typography.titleMedium)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                val porcentajes = premios.map { it.porcentajeTexto.toIntOrNull() ?: 0 }
                 error = when {
                     premios.any { it.nombre.isBlank() } -> "Ponle nombre a cada premio"
                     premios.any { Figuras.cantidadCasillas(it.figura) == 0 } -> "Dibuja la figura de cada premio"
-                    porcentajes.any { it <= 0 } -> "Escribe el porcentaje de cada premio"
-                    porcentajes.sum() >= 100 -> "Los premios suman 100% o más: no queda nada para el lleno"
                     else -> null
                 }
                 if (error == null) {
                     onIniciar(premios.map {
-                        PremioIntermedio(it.nombre.trim(), it.figura, it.porcentajeTexto.toInt())
+                        PremioIntermedio(it.nombre.trim(), it.figura)
                     })
                 }
             }) { Text("Iniciar") }
