@@ -14,10 +14,15 @@ import com.orlando.bingoapp.data.entity.Premio
 import com.orlando.bingoapp.domain.Dinero
 import com.orlando.bingoapp.domain.Figuras
 import com.orlando.bingoapp.domain.Ganador
+import com.orlando.bingoapp.domain.SorteoBalotas
 import com.orlando.bingoapp.domain.ModoEnJuego
 import com.orlando.bingoapp.domain.TablaEnJuego
 import com.orlando.bingoapp.domain.VerificadorGanadores
+import com.orlando.bingoapp.voz.CantorBalotas
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -44,6 +49,9 @@ data class EstadoJuego(
     val esLlena: Boolean get() = premios.size > 1
 
     fun valorPremio(premio: Premio): Int = Dinero.porcentaje(recaudo, premio.porcentaje)
+
+    /** Los que completaron justo con la última balota: los ganadores normales. */
+    val conLaUltima: List<Ganador> get() = posiblesGanadores.filter { it.balotasAlCompletar == balotas.size }
 
     /** En el sencillo valen todas las jugadas; en la llena, la figura de cada premio. */
     fun nombresModos(premio: Premio): List<String> =
@@ -99,10 +107,10 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
             val tablas = tableros.filter { it.tablero.id in pagados }.flatMap { t ->
                 t.tablas.map { TablaEnJuego(t.tablero.numero, it.posicion, it.numeros) }
             }
-            VerificadorGanadores.buscarGanadores(
+            VerificadorGanadores.buscarConMomento(
                 tablas,
                 modosDelPremio(premioActual, modos),
-                partida.balotas.toSet()
+                partida.balotas
             )
         } else emptyList()
 
@@ -114,6 +122,86 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     /** Resultado de "Verificar tablero" (null = diálogo cerrado). */
     var verificacion by mutableStateOf<Verificacion?>(null)
         private set
+
+    // ---------- Modo automático: la app saca, marca y canta las balotas ----------
+
+    private val cantor = CantorBalotas(application)
+    private var trabajoAutomatico: Job? = null
+
+    var automatico by mutableStateOf(false)
+        private set
+    var segundosRestantes by mutableStateOf(0)
+        private set
+    var segundosEntreBalotas by mutableStateOf(ajustes.segundosEntreBalotas)
+        private set
+    var vozActiva by mutableStateOf(ajustes.vozActiva)
+        private set
+
+    /** null mientras arranca la voz; false si el celular no tiene voz en español. */
+    val vozDisponible: Boolean? get() = cantor.disponible
+
+    /**
+     * Inicia (o reanuda) el modo automático. Es un ciclo en una corrutina:
+     * sacar balota -> cantarla -> esperar los segundos configurados -> repetir.
+     * Pausar = cancelar la corrutina. No se detiene sola con un posible ganador:
+     * si nadie canta bingo, la ronda sigue y queda registrado quién la dejó pasar.
+     */
+    fun iniciarAutomatico() {
+        if (trabajoAutomatico?.isActive == true) return
+        automatico = true
+        trabajoAutomatico = viewModelScope.launch {
+            try {
+                while (isActive) {
+                    if (estado.value.premioActual == null) break // la ronda terminó
+                    val balota = sacarBalota() ?: break // ya salieron las 75
+                    if (vozActiva) cantor.decir(SorteoBalotas.textoParaCantar(balota))
+                    for (segundo in segundosEntreBalotas downTo 1) {
+                        segundosRestantes = segundo
+                        delay(1_000)
+                    }
+                }
+            } finally {
+                automatico = false
+                segundosRestantes = 0
+            }
+        }
+    }
+
+    fun pausarAutomatico() {
+        trabajoAutomatico?.cancel()
+        cantor.callar()
+    }
+
+    fun repetirUltima() {
+        val ultima = estado.value.balotas.lastOrNull() ?: return
+        viewModelScope.launch { cantor.decir(SorteoBalotas.textoParaCantar(ultima)) }
+    }
+
+    fun cambiarSegundos(segundos: Int) {
+        segundosEntreBalotas = segundos
+        ajustes.segundosEntreBalotas = segundos
+    }
+
+    fun cambiarVoz(activa: Boolean) {
+        vozActiva = activa
+        ajustes.vozActiva = activa
+        if (!activa) cantor.callar()
+    }
+
+    /**
+     * Saca una balota que no haya salido y la guarda, todo dentro del candado,
+     * leyendo la partida directo de la base de datos para nunca repetir una balota.
+     */
+    private suspend fun sacarBalota(): Int? = candado.withLock {
+        val actual = partidaDao.obtenerActual() ?: return@withLock null
+        val balota = SorteoBalotas.siguiente(actual.balotas.toSet()) ?: return@withLock null
+        partidaDao.actualizar(actual.copy(balotas = actual.balotas + balota))
+        balota
+    }
+
+    override fun onCleared() {
+        cantor.cerrar()
+    }
 
     // ---------- Balotas ----------
 
@@ -135,6 +223,7 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     // ---------- Partidas ----------
 
     fun iniciarSencillo() {
+        pausarAutomatico()
         viewModelScope.launch {
             candado.withLock {
                 // Sin figuras propias: el sencillo usa las jugadas de la pestaña "Jugadas"
@@ -147,6 +236,7 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun iniciarLlena(intermedios: List<PremioIntermedio>) {
+        pausarAutomatico()
         viewModelScope.launch {
             candado.withLock {
                 val premios = intermedios.mapIndexed { i, p ->
@@ -177,20 +267,26 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Marca como ganado el premio en juego con los ganadores actuales.
+     * Marca como ganado el premio en juego con los ganadores que eligió tu papá
+     * (por defecto, los que completaron con la última balota). Los demás que ya
+     * habían completado quedan registrados como "la dejaron pasar".
      * En la llena, el juego sigue con el siguiente premio y las mismas balotas.
      */
-    fun confirmarGanadores() {
+    fun confirmarGanadores(elegidos: List<Ganador>) {
+        if (elegidos.isEmpty()) return
         viewModelScope.launch {
             candado.withLock {
                 val e = estado.value
                 val premio = e.premioActual ?: return@withLock
-                if (e.posiblesGanadores.isEmpty()) return@withLock
+                val sePasaron = e.posiblesGanadores.filter { it !in elegidos }
                 premioDao.actualizar(
                     premio.copy(
                         ganado = true,
                         balotasAlGanar = e.balotas.size,
-                        ganadores = e.posiblesGanadores.joinToString(", ") { it.descripcion }
+                        ganadores = elegidos.joinToString(", ") { it.descripcion },
+                        dejaronPasar = sePasaron
+                            .takeIf { it.isNotEmpty() }
+                            ?.joinToString(", ") { "${it.descripcion} (completó con la balota ${it.balotasAlCompletar})" }
                     )
                 )
             }

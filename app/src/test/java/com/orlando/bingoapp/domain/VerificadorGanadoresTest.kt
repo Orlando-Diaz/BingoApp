@@ -104,4 +104,27 @@ class VerificadorGanadoresTest {
     fun hayDieciseisCuadritos() {
         assertEquals(16, Figuras.CUADRITOS.size)
     }
+
+    @Test
+    fun diceConQueBalotaCompleto() {
+        // Las 4 esquinas se completan con la 4ª balota; después salen más
+        val orden = listOf(1, 61, 30, 5, 65, 40, 70)
+        val resultado = VerificadorGanadores.buscarConMomento(listOf(tabla), sencillo, orden)
+        assertEquals("4 esquinas", resultado.first().nombreModo)
+        assertEquals(5, resultado.first().balotasAlCompletar) // 1, 61, 30, 5, 65 -> la 65 sale de 5ª
+    }
+
+    @Test
+    fun siCompletaDosFigurasCuentaLaPrimera() {
+        // Columna G completa con la 5ª balota; 4 esquinas con la 8ª
+        val orden = listOf(46, 47, 48, 49, 50, 1, 61, 5, 65)
+        val resultado = VerificadorGanadores.buscarConMomento(listOf(tabla), sencillo, orden)
+        assertEquals("Línea", resultado.first().nombreModo)
+        assertEquals(5, resultado.first().balotasAlCompletar)
+    }
+
+    @Test
+    fun sinCompletarNoAparece() {
+        assertTrue(VerificadorGanadores.buscarConMomento(listOf(tabla), sencillo, listOf(1, 61, 5)).isEmpty())
+    }
 }

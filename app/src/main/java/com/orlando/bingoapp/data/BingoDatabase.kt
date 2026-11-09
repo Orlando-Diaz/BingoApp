@@ -22,18 +22,20 @@ import com.orlando.bingoapp.data.entity.TableroEnPartida
 
 @Database(
     entities = [Tablero::class, Tabla::class, Modo::class, Partida::class, Premio::class, TableroEnPartida::class],
-    version = 6,
+    version = 7,
     exportSchema = true,
     // Room compara los schemas/*.json con el código nuevo y genera la migración solo.
     // 2 -> 3: tabla de premios y columna usarEnSencillo en modos.
     // 3 -> 4: modos.cualquierPosicion y premios.figuras.
     // 4 -> 5: tabla tablas_pagadas y partidas.precioCuatroTablas.
     // 5 -> 6: cobro por tablero: sale tablas_pagadas, entra tableros_en_partida.
+    // 6 -> 7: premios.dejaronPasar.
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
-        AutoMigration(from = 5, to = 6, spec = Migracion5a6::class)
+        AutoMigration(from = 5, to = 6, spec = Migracion5a6::class),
+        AutoMigration(from = 6, to = 7)
     ]
 )
 @TypeConverters(Converters::class)
@@ -49,7 +51,7 @@ abstract class BingoDatabase : RoomDatabase() {
         const val NOMBRE = "bingo.db"
 
         /** Debe ser igual a "version" en @Database. Sirve para revisar las copias de seguridad. */
-        const val VERSION = 6
+        const val VERSION = 7
 
         @Volatile
         private var instancia: BingoDatabase? = null

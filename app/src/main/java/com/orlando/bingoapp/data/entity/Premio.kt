@@ -35,5 +35,6 @@ data class Premio(
     val porcentaje: Int,
     val ganado: Boolean = false,
     val balotasAlGanar: Int? = null, // con cuántas balotas cantadas se ganó
-    val ganadores: String? = null    // ej: "Tablero 12 · tabla 3, Tablero 5 · tabla 1"
+    val ganadores: String? = null,   // ej: "Tablero 12 · tabla 3, Tablero 5 · tabla 1"
+    val dejaronPasar: String? = null // quienes completaron antes y no cantaron bingo
 )

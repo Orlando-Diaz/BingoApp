@@ -20,6 +20,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -28,19 +31,24 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlin.math.roundToInt
 import com.orlando.bingoapp.domain.Dinero
+import com.orlando.bingoapp.domain.Ganador
 import com.orlando.bingoapp.domain.ReglasBingo
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +74,13 @@ fun JuegoScreen(
             viewModel.iniciarSencillo()
             onIrACobro()
         }
+    }
+
+    // Mientras la app canta sola, la pantalla no se apaga
+    val vista = LocalView.current
+    DisposableEffect(viewModel.automatico) {
+        vista.keepScreenOn = viewModel.automatico
+        onDispose { vista.keepScreenOn = false }
     }
 
     Scaffold(
@@ -98,9 +113,12 @@ fun JuegoScreen(
                 else -> {
                     BarraBalotas(
                         balotas = balotas,
-                        puedeDeshacer = balotas.isNotEmpty() && !estado.terminada,
+                        puedeDeshacer = balotas.isNotEmpty() && !estado.terminada && !viewModel.automatico,
                         onDeshacer = viewModel::deshacerUltima
                     )
+                    if (!estado.terminada) {
+                        ControlAutomatico(viewModel, hayBalotas = balotas.isNotEmpty())
+                    }
                     if (estado.posiblesGanadores.isNotEmpty()) {
                         TarjetaGanadores(estado, onConfirmar = viewModel::confirmarGanadores)
                     }
@@ -366,6 +384,9 @@ private fun InfoRonda(estado: EstadoJuego) {
                 Text("Premio en juego: ${premio.nombre} · ${Dinero.formato(estado.valorPremio(premio))}", style = MaterialTheme.typography.titleSmall)
                 estado.premios.filter { it.ganado }.forEach { p ->
                     Text("✓ ${p.nombre}: ${p.ganadores.orEmpty()}", style = MaterialTheme.typography.bodyMedium)
+                    p.dejaronPasar?.let {
+                        Text("La dejaron pasar: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             } else {
                 Text("Vale: " + estado.nombresModos(premio).joinToString(", "), style = MaterialTheme.typography.bodyMedium)
@@ -388,44 +409,111 @@ private fun TarjetaTerminada(estado: EstadoJuego, onNueva: () -> Unit) {
                     "${p.nombre} (${Dinero.formato(estado.valorPremio(p))}): ${p.ganadores.orEmpty()} — con ${p.balotasAlGanar ?: 0} balotas",
                     style = MaterialTheme.typography.bodyMedium
                 )
+                p.dejaronPasar?.let {
+                    Text("La dejaron pasar: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
             }
             Button(onClick = onNueva, modifier = Modifier.fillMaxWidth()) { Text("Nueva ronda") }
         }
     }
 }
 
-/** Aviso grande cuando una o varias tablas completaron la figura del premio. */
+/**
+ * Aviso cuando una o varias tablas completaron la figura del premio.
+ * Por defecto quedan elegidas las que completaron con la última balota;
+ * las que completaron antes "la dejaron pasar", pero tu papá puede incluirlas.
+ */
 @Composable
-private fun TarjetaGanadores(estado: EstadoJuego, onConfirmar: () -> Unit) {
-    val ganadores = estado.posiblesGanadores
+private fun TarjetaGanadores(estado: EstadoJuego, onConfirmar: (List<Ganador>) -> Unit) {
+    val posibles = estado.posiblesGanadores
+    val elegidos = remember(posibles) {
+        mutableStateMapOf<Ganador, Boolean>().apply { posibles.forEach { put(it, it in estado.conLaUltima) } }
+    }
+    val cantidad = elegidos.count { it.value }
+    val colores = MaterialTheme.colorScheme
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+        colors = CardDefaults.cardColors(containerColor = colores.tertiaryContainer)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                if (ganadores.size == 1) "¡Posible ganador!" else "¡${ganadores.size} posibles ganadores! Se divide el premio",
+                if (estado.conLaUltima.isNotEmpty()) "¡Posible ganador!" else "Completaron, pero nadie cantó bingo",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onTertiaryContainer
+                color = colores.onTertiaryContainer
             )
-            ganadores.forEach {
-                Text(
-                    "${it.descripcion} — ${it.nombreModo}",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer
-                )
+            posibles.forEach { g ->
+                val conUltima = g.balotasAlCompletar == estado.balotas.size
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = elegidos[g] == true, onCheckedChange = { elegidos[g] = it })
+                    Column {
+                        Text("${g.descripcion} — ${g.nombreModo}", style = MaterialTheme.typography.titleMedium, color = colores.onTertiaryContainer)
+                        Text(
+                            if (conUltima) "Completó con la última balota"
+                            else "Completó con la balota ${g.balotasAlCompletar}: la dejó pasar",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colores.onTertiaryContainer
+                        )
+                    }
+                }
             }
-            Text(
-                "Confirma cuando el jugador cante bingo. Si nadie lo canta, sigue marcando balotas.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onTertiaryContainer
-            )
-            Button(onClick = onConfirmar, modifier = Modifier.fillMaxWidth()) {
+            if (cantidad > 1) {
+                Text("Se divide el premio entre $cantidad", style = MaterialTheme.typography.bodyMedium, color = colores.onTertiaryContainer)
+            }
+            Button(
+                onClick = { onConfirmar(posibles.filter { elegidos[it] == true }) },
+                enabled = cantidad > 0,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text(if (estado.esLlena && estado.premioActual?.orden != estado.premios.size) "Confirmar y seguir jugando" else "Confirmar ganador")
+            }
+        }
+    }
+}
+
+/** Controles del modo automático: la app saca, marca y canta las balotas sola. */
+@Composable
+private fun ControlAutomatico(viewModel: JuegoViewModel, hayBalotas: Boolean) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (viewModel.automatico) {
+                    Button(onClick = viewModel::pausarAutomatico, modifier = Modifier.weight(1f).height(52.dp)) {
+                        Text("⏸  Pausar", fontSize = 18.sp)
+                    }
+                } else {
+                    Button(onClick = viewModel::iniciarAutomatico, modifier = Modifier.weight(1f).height(52.dp)) {
+                        Text(if (hayBalotas) "▶  Reanudar" else "▶  Cantar solo", fontSize = 18.sp)
+                    }
+                }
+                OutlinedButton(onClick = viewModel::repetirUltima, enabled = hayBalotas, modifier = Modifier.height(52.dp)) {
+                    Text("🔊 Repetir")
+                }
+            }
+            if (viewModel.automatico && viewModel.segundosRestantes > 0) {
+                Text("Siguiente balota en ${viewModel.segundosRestantes} s", style = MaterialTheme.typography.titleSmall)
+            }
+            Text("Una balota cada ${viewModel.segundosEntreBalotas} segundos", style = MaterialTheme.typography.bodyMedium)
+            Slider(
+                value = viewModel.segundosEntreBalotas.toFloat(),
+                onValueChange = { viewModel.cambiarSegundos(it.roundToInt()) },
+                valueRange = 3f..30f,
+                steps = 26 // un paso por cada segundo entre 3 y 30
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Cantar en voz alta", modifier = Modifier.weight(1f))
+                Switch(checked = viewModel.vozActiva, onCheckedChange = viewModel::cambiarVoz)
+            }
+            if (viewModel.vozActiva && viewModel.vozDisponible == false) {
+                Text(
+                    "Este celular no tiene voz en español. Instala \"Servicios de voz de Google\" desde Play Store.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
     }

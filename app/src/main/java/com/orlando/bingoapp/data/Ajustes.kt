@@ -24,8 +24,24 @@ class Ajustes(context: Context) {
             prefs.edit().putInt(CLAVE_LLENA, valor).commit()
         }
 
+    /** Modo automático: cada cuántos segundos sale una balota. */
+    var segundosEntreBalotas: Int
+        get() = prefs.getInt(CLAVE_SEGUNDOS, 8)
+        set(valor) {
+            prefs.edit().putInt(CLAVE_SEGUNDOS, valor).apply()
+        }
+
+    /** Modo automático: si la app canta en voz alta. */
+    var vozActiva: Boolean
+        get() = prefs.getBoolean(CLAVE_VOZ, true)
+        set(valor) {
+            prefs.edit().putBoolean(CLAVE_VOZ, valor).apply()
+        }
+
     private companion object {
         const val CLAVE_SENCILLO = "precio4_sencillo"
         const val CLAVE_LLENA = "precio4_llena"
+        const val CLAVE_SEGUNDOS = "segundos_entre_balotas"
+        const val CLAVE_VOZ = "voz_activa"
     }
 }
