@@ -331,6 +331,17 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Corrige un premio de la llena que quedó mal dibujado (solo si no se ha ganado).
+     * Los ganadores se recalculan solos con la figura nueva.
+     */
+    fun corregirPremio(premio: Premio, nombre: String, figura: String) {
+        if (premio.ganado || Figuras.cantidadCasillas(figura) == 0 || nombre.isBlank()) return
+        viewModelScope.launch {
+            premioDao.actualizar(premio.copy(nombre = nombre.trim(), figuras = listOf(figura)))
+        }
+    }
+
     // ---------- Verificar un tablero ----------
 
     fun verificarTablero(numero: Int) {

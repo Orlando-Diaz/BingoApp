@@ -26,6 +26,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -48,9 +49,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.orlando.bingoapp.ui.jugadas.FiguraEditable
+import com.orlando.bingoapp.ui.jugadas.FiguraMini
+import com.orlando.bingoapp.ui.jugadas.alternarCasilla
 import kotlin.math.roundToInt
 import com.orlando.bingoapp.data.entity.Premio
 import com.orlando.bingoapp.domain.Dinero
+import com.orlando.bingoapp.domain.Figuras
 import com.orlando.bingoapp.domain.Ganador
 import com.orlando.bingoapp.domain.ReglasBingo
 
@@ -68,6 +73,7 @@ fun JuegoScreen(
     var configurarLlena by remember { mutableStateOf(false) }
     var verificando by remember { mutableStateOf(false) }
     var sinJugadas by remember { mutableStateOf(false) }
+    var viendoPremios by remember { mutableStateOf(false) }
 
     // Flujo de ronda nueva: elegir tipo -> crear la ronda -> ir a Cobro
     val iniciarSencillo: () -> Unit = {
@@ -119,6 +125,9 @@ fun JuegoScreen(
                         puedeDeshacer = balotas.isNotEmpty() && !estado.terminada && !viewModel.automatico,
                         onDeshacer = viewModel::deshacerUltima
                     )
+                    if (estado.esLlena) {
+                        FranjaPremiosLlena(estado, onVer = { viendoPremios = true })
+                    }
                     if (!estado.terminada) {
                         ControlAutomatico(viewModel, hayBalotas = balotas.isNotEmpty())
                     }
@@ -188,6 +197,14 @@ fun JuegoScreen(
                 onIrACobro()
             },
             onCancelar = { configurarLlena = false }
+        )
+    }
+
+    if (viendoPremios) {
+        DialogoPremiosLlena(
+            premios = estado.premios,
+            onCorregir = viewModel::corregirPremio,
+            onCerrar = { viendoPremios = false }
         )
     }
 
@@ -385,10 +402,6 @@ private fun InfoRonda(estado: EstadoJuego) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (estado.esLlena) {
-                Text(
-                    "En juego (en cualquier orden): " + enJuego.joinToString(", ") { it.nombre },
-                    style = MaterialTheme.typography.titleSmall
-                )
                 estado.premios.filter { it.ganado }.forEach { p ->
                     Text("✓ ${p.nombre}: ${p.ganadores.orEmpty()}", style = MaterialTheme.typography.bodyMedium)
                     p.dejaronPasar?.let {
@@ -591,5 +604,113 @@ private fun DialogoVoces(viewModel: JuegoViewModel, onCerrar: () -> Unit) {
             }
         },
         confirmButton = { TextButton(onClick = onCerrar) { Text("Listo") } }
+    )
+}
+
+/** En la llena: qué premios faltan, con un botón para ver sus figuras. */
+@Composable
+private fun FranjaPremiosLlena(estado: EstadoJuego, onVer: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (estado.terminada) "Todos los premios entregados"
+                else "En juego: " + estado.premiosEnJuego.joinToString(", ") { it.nombre },
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onVer) { Text("👁 Ver premios") }
+        }
+    }
+}
+
+/**
+ * Los premios de la llena con su figura. Los que no se han ganado se pueden
+ * corregir (por si se dibujaron mal); el cartón lleno siempre es igual.
+ */
+@Composable
+private fun DialogoPremiosLlena(
+    premios: List<Premio>,
+    onCorregir: (Premio, String, String) -> Unit,
+    onCerrar: () -> Unit
+) {
+    var corrigiendo by remember { mutableStateOf<Premio?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        title = { Text("Premios de la llena") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                premios.sortedBy { it.orden }.forEach { premio ->
+                    val esLleno = premio.figuras == Figuras.LLENO
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FiguraMini(premio.figuras.firstOrNull() ?: Figuras.VACIA, tamano = 96.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text(premio.nombre, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                if (premio.ganado) "✓ Ganado: ${premio.ganadores.orEmpty()}" else "En juego",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (premio.ganado) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (!premio.ganado && !esLleno) {
+                                TextButton(onClick = { corrigiendo = premio }) { Text("Corregir") }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onCerrar) { Text("Cerrar") } }
+    )
+
+    corrigiendo?.let { premio ->
+        DialogoCorregirPremio(
+            premio = premio,
+            onGuardar = { nombre, figura ->
+                onCorregir(premio, nombre, figura)
+                corrigiendo = null
+            },
+            onCancelar = { corrigiendo = null }
+        )
+    }
+}
+
+@Composable
+private fun DialogoCorregirPremio(
+    premio: Premio,
+    onGuardar: (String, String) -> Unit,
+    onCancelar: () -> Unit
+) {
+    var nombre by remember { mutableStateOf(premio.nombre) }
+    var figura by remember { mutableStateOf(premio.figuras.firstOrNull() ?: Figuras.VACIA) }
+    val valido = nombre.isNotBlank() && Figuras.cantidadCasillas(figura) > 0
+
+    AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("Corregir premio") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = nombre,
+                    onValueChange = { nombre = it.take(30) },
+                    label = { Text("Nombre") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text("Toca las casillas para corregir la figura", style = MaterialTheme.typography.bodySmall)
+                FiguraEditable(
+                    figura = figura,
+                    onToque = { figura = alternarCasilla(figura, it) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onGuardar(nombre, figura) }, enabled = valido) { Text("Guardar") } },
+        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } }
     )
 }
