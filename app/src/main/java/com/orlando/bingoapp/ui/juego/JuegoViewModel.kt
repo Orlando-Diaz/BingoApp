@@ -32,24 +32,32 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/** Las tablas que completaron la figura de un premio. */
+data class GanadoresDePremio(val premio: Premio, val ganadores: List<Ganador>)
+
 /** Todo lo que la pantalla de juego necesita mostrar. */
 data class EstadoJuego(
     val cargando: Boolean = true,
     val partida: Partida? = null,
     val premios: List<Premio> = emptyList(),
     val modos: List<Modo> = emptyList(),
-    val posiblesGanadores: List<Ganador> = emptyList(),
+    val posiblesGanadores: List<GanadoresDePremio> = emptyList(), // agrupados por premio
     val tablerosPagados: Set<Long> = emptySet(), // ids de los tableros que pagaron esta ronda
     val recaudo: Int = 0
 ) {
     val balotas: List<Int> get() = partida?.balotas.orEmpty()
-    val premioActual: Premio? get() = premios.firstOrNull { !it.ganado }
+    /**
+     * Todos los premios que faltan se juegan AL MISMO TIEMPO: en la llena se puede
+     * ganar primero la figura 2 que la 1.
+     */
+    val premiosEnJuego: List<Premio> get() = premios.filter { !it.ganado }
     val sinIniciar: Boolean get() = premios.isEmpty()
-    val terminada: Boolean get() = premios.isNotEmpty() && premioActual == null
+    val terminada: Boolean get() = premios.isNotEmpty() && premiosEnJuego.isEmpty()
     val esLlena: Boolean get() = premios.size > 1
 
     /** Los que completaron justo con la última balota: los ganadores normales. */
-    val conLaUltima: List<Ganador> get() = posiblesGanadores.filter { it.balotasAlCompletar == balotas.size }
+    fun conLaUltima(grupo: GanadoresDePremio): List<Ganador> =
+        grupo.ganadores.filter { it.balotasAlCompletar == balotas.size }
 
     /** En el sencillo valen todas las jugadas; en la llena, la figura de cada premio. */
     fun nombresModos(premio: Premio): List<String> =
@@ -101,18 +109,18 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
             .filter { it.tablero.id in pagados }
             .sumOf { Dinero.valorTablas(it.tablero.cantidadTablas, precio) }
         val premios = actual?.premios.orEmpty().sortedBy { it.orden }
-        val premioActual = premios.firstOrNull { !it.ganado }
 
-        val ganadores = if (partida != null && premioActual != null) {
+        val ganadores = if (partida != null) {
             // Solo juegan los tableros que pagaron esta ronda
             val tablas = tableros.filter { it.tablero.id in pagados }.flatMap { t ->
                 t.tablas.map { TablaEnJuego(t.tablero.numero, it.posicion, it.numeros) }
             }
-            VerificadorGanadores.buscarConMomento(
-                tablas,
-                modosDelPremio(premioActual, modos),
-                partida.balotas
-            )
+            // Cada premio que falta se revisa por separado
+            premios.filter { !it.ganado }.mapNotNull { premio ->
+                VerificadorGanadores.buscarConMomento(tablas, modosDelPremio(premio, modos), partida.balotas)
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { GanadoresDePremio(premio, it) }
+            }
         } else emptyList()
 
         EstadoJuego(cargando = false, partida, premios, modos, ganadores, pagados, recaudo)
@@ -157,7 +165,7 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
         trabajoAutomatico = viewModelScope.launch {
             try {
                 while (isActive) {
-                    if (estado.value.premioActual == null) break // la ronda terminó
+                    if (estado.value.premiosEnJuego.isEmpty()) break // la ronda terminó
                     val balota = sacarBalota() ?: break // ya salieron las 75
                     if (vozActiva) cantor.decir(SorteoBalotas.textoParaCantar(balota))
                     for (segundo in segundosEntreBalotas downTo 1) {
@@ -297,18 +305,18 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Marca como ganado el premio en juego con los ganadores que eligió tu papá
+     * Marca como ganado ESE premio con los ganadores que eligió tu papá
      * (por defecto, los que completaron con la última balota). Los demás que ya
      * habían completado quedan registrados como "la dejaron pasar".
-     * En la llena, el juego sigue con el siguiente premio y las mismas balotas.
+     * En la llena, los otros premios siguen en juego con las mismas balotas.
      */
-    fun confirmarGanadores(elegidos: List<Ganador>) {
+    fun confirmarGanadores(premio: Premio, elegidos: List<Ganador>) {
         if (elegidos.isEmpty()) return
         viewModelScope.launch {
             candado.withLock {
                 val e = estado.value
-                val premio = e.premioActual ?: return@withLock
-                val sePasaron = e.posiblesGanadores.filter { it !in elegidos }
+                val grupo = e.posiblesGanadores.find { it.premio.id == premio.id } ?: return@withLock
+                val sePasaron = grupo.ganadores.filter { it !in elegidos }
                 premioDao.actualizar(
                     premio.copy(
                         ganado = true,
@@ -329,8 +337,8 @@ class JuegoViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val e = estado.value
             val tablero = tableroDao.buscarPorNumero(numero)
-            val premio = e.premioActual
-            val modos = if (premio != null) modosDelPremio(premio, e.modos) else emptyList()
+            // Se revisa contra todos los premios que faltan
+            val modos = e.premiosEnJuego.flatMap { modosDelPremio(it, e.modos) }
             val balotas = e.balotas.toSet()
 
             verificacion = if (tablero == null) {

@@ -34,6 +34,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlin.math.roundToInt
+import com.orlando.bingoapp.data.entity.Premio
 import com.orlando.bingoapp.domain.Dinero
 import com.orlando.bingoapp.domain.Ganador
 import com.orlando.bingoapp.domain.ReglasBingo
@@ -120,8 +122,11 @@ fun JuegoScreen(
                     if (!estado.terminada) {
                         ControlAutomatico(viewModel, hayBalotas = balotas.isNotEmpty())
                     }
-                    if (estado.posiblesGanadores.isNotEmpty()) {
-                        TarjetaGanadores(estado, onConfirmar = viewModel::confirmarGanadores)
+                    // Una tarjeta por cada premio que alguien completó (en la llena pueden ser varios)
+                    estado.posiblesGanadores.forEach { grupo ->
+                        key(grupo.premio.id) {
+                            TarjetaGanadores(estado, grupo, onConfirmar = viewModel::confirmarGanadores)
+                        }
                     }
                     if (estado.tablerosPagados.isEmpty()) {
                         AvisoSinPagos(onIrACobro)
@@ -208,14 +213,11 @@ fun JuegoScreen(
     }
 }
 
-private fun tituloRonda(estado: EstadoJuego): String {
-    val premio = estado.premioActual
-    return when {
-        estado.sinIniciar -> "Juego"
-        premio == null -> "Ronda terminada"
-        estado.esLlena -> "Llena · ${premio.nombre} (${premio.orden}/${estado.premios.size})"
-        else -> "Sencillo"
-    }
+private fun tituloRonda(estado: EstadoJuego): String = when {
+    estado.sinIniciar -> "Juego"
+    estado.terminada -> "Ronda terminada"
+    estado.esLlena -> "Llena · faltan ${estado.premiosEnJuego.size} de ${estado.premios.size}"
+    else -> "Sencillo"
 }
 
 /** Cuando no hay ronda en curso: elegir qué se va a jugar. */
@@ -378,11 +380,15 @@ private fun AvisoSinPagos(onIrACobro: () -> Unit) {
 /** Datos de la ronda: qué vale para ganar, cuánto se recogió y premios ya entregados. */
 @Composable
 private fun InfoRonda(estado: EstadoJuego) {
-    val premio = estado.premioActual ?: return
+    val enJuego = estado.premiosEnJuego
+    if (enJuego.isEmpty()) return
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (estado.esLlena) {
-                Text("Premio en juego: ${premio.nombre}", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "En juego (en cualquier orden): " + enJuego.joinToString(", ") { it.nombre },
+                    style = MaterialTheme.typography.titleSmall
+                )
                 estado.premios.filter { it.ganado }.forEach { p ->
                     Text("✓ ${p.nombre}: ${p.ganadores.orEmpty()}", style = MaterialTheme.typography.bodyMedium)
                     p.dejaronPasar?.let {
@@ -390,7 +396,7 @@ private fun InfoRonda(estado: EstadoJuego) {
                     }
                 }
             } else {
-                Text("Vale: " + estado.nombresModos(premio).joinToString(", "), style = MaterialTheme.typography.bodyMedium)
+                Text("Vale: " + estado.nombresModos(enJuego.first()).joinToString(", "), style = MaterialTheme.typography.bodyMedium)
             }
             Text(
                 "Recaudado: ${Dinero.formato(estado.recaudo)} · ${estado.tablerosPagados.size} tableros en juego",
@@ -425,10 +431,15 @@ private fun TarjetaTerminada(estado: EstadoJuego, onNueva: () -> Unit) {
  * las que completaron antes "la dejaron pasar", pero tu papá puede incluirlas.
  */
 @Composable
-private fun TarjetaGanadores(estado: EstadoJuego, onConfirmar: (List<Ganador>) -> Unit) {
-    val posibles = estado.posiblesGanadores
+private fun TarjetaGanadores(
+    estado: EstadoJuego,
+    grupo: GanadoresDePremio,
+    onConfirmar: (Premio, List<Ganador>) -> Unit
+) {
+    val posibles = grupo.ganadores
+    val conLaUltima = estado.conLaUltima(grupo)
     val elegidos = remember(posibles) {
-        mutableStateMapOf<Ganador, Boolean>().apply { posibles.forEach { put(it, it in estado.conLaUltima) } }
+        mutableStateMapOf<Ganador, Boolean>().apply { posibles.forEach { put(it, it in conLaUltima) } }
     }
     val cantidad = elegidos.count { it.value }
     val colores = MaterialTheme.colorScheme
@@ -442,7 +453,8 @@ private fun TarjetaGanadores(estado: EstadoJuego, onConfirmar: (List<Ganador>) -
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                if (estado.conLaUltima.isNotEmpty()) "¡Posible ganador!" else "Completaron, pero nadie cantó bingo",
+                (if (conLaUltima.isNotEmpty()) "¡Posible ganador!" else "Completaron, pero nadie cantó bingo") +
+                    if (estado.esLlena) " · ${grupo.premio.nombre}" else "",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = colores.onTertiaryContainer
@@ -466,11 +478,14 @@ private fun TarjetaGanadores(estado: EstadoJuego, onConfirmar: (List<Ganador>) -
                 Text("Se divide el premio entre $cantidad", style = MaterialTheme.typography.bodyMedium, color = colores.onTertiaryContainer)
             }
             Button(
-                onClick = { onConfirmar(posibles.filter { elegidos[it] == true }) },
+                onClick = { onConfirmar(grupo.premio, posibles.filter { elegidos[it] == true }) },
                 enabled = cantidad > 0,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (estado.esLlena && estado.premioActual?.orden != estado.premios.size) "Confirmar y seguir jugando" else "Confirmar ganador")
+                Text(
+                    if (estado.premiosEnJuego.size > 1) "Confirmar ${grupo.premio.nombre} y seguir jugando"
+                    else "Confirmar ganador"
+                )
             }
         }
     }
@@ -501,6 +516,7 @@ private fun ControlAutomatico(viewModel: JuegoViewModel, hayBalotas: Boolean) {
             if (viewModel.automatico && viewModel.segundosRestantes > 0) {
                 Text("Siguiente balota en ${viewModel.segundosRestantes} s", style = MaterialTheme.typography.titleSmall)
             }
+
             Text("Una balota cada ${viewModel.segundosEntreBalotas} segundos", style = MaterialTheme.typography.bodyMedium)
             Slider(
                 value = viewModel.segundosEntreBalotas.toFloat(),
