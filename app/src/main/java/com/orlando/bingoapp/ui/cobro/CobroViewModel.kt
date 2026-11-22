@@ -1,6 +1,9 @@
 package com.orlando.bingoapp.ui.cobro
 
 import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.orlando.bingoapp.data.Ajustes
@@ -9,6 +12,7 @@ import com.orlando.bingoapp.data.entity.Partida
 import com.orlando.bingoapp.data.entity.Tablero
 import com.orlando.bingoapp.data.entity.TableroEnPartida
 import com.orlando.bingoapp.domain.Dinero
+import com.orlando.bingoapp.voz.CantorBalotas
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -49,6 +53,26 @@ class CobroViewModel(application: Application) : AndroidViewModel(application) {
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EstadoCobro())
 
+    // ---------- Ayudas para ver mejor ----------
+
+    /** Misma voz y tono que se eligieron para cantar las balotas. */
+    private val cantor = CantorBalotas(application, ajustes.vozNombre, ajustes.tonoVoz)
+
+    var tamano by mutableStateOf(ajustes.tamanoCobro)
+        private set
+    var vozAlTocar by mutableStateOf(ajustes.vozEnCobro)
+        private set
+
+    fun cambiarTamano(valor: Int) {
+        tamano = valor
+        ajustes.tamanoCobro = valor
+    }
+
+    fun cambiarVozAlTocar(valor: Boolean) {
+        vozAlTocar = valor
+        ajustes.vozEnCobro = valor
+    }
+
     /** Tocar un tablero: si no estaba jugando, entra; si estaba, sale. */
     fun alternar(tablero: Tablero) {
         val partidaId = estado.value.partida?.id ?: return
@@ -57,6 +81,16 @@ class CobroViewModel(application: Application) : AndroidViewModel(application) {
             if (estaJugando) listaDao.quitar(partidaId, tablero.id)
             else listaDao.guardar(TableroEnPartida(partidaId, tablero.id, pagado = true))
         }
+        // Confirmación de oído: así sabe que tocó el tablero correcto
+        if (vozAlTocar) {
+            viewModelScope.launch {
+                cantor.decir(if (estaJugando) "Quitado ${tablero.numero}" else "Tablero ${tablero.numero}")
+            }
+        }
+    }
+
+    override fun onCleared() {
+        cantor.cerrar()
     }
 
     /** Quita la selección de todos (por ejemplo, al empezar una noche nueva). */

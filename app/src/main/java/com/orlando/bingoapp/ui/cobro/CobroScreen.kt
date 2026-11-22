@@ -41,6 +41,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,6 +68,8 @@ fun CobroScreen(
 ) {
     val estado by viewModel.estado.collectAsStateWithLifecycle()
     var editandoPrecios by remember { mutableStateOf(false) }
+    var ajustandoVista by remember { mutableStateOf(false) }
+    val tamano = TamanoCasilla.entries[viewModel.tamano.coerceIn(0, 2)]
     var limpiando by remember { mutableStateOf(false) }
     val enRonda = estado.partida != null && estado.hayPremios
 
@@ -68,7 +77,10 @@ fun CobroScreen(
         topBar = {
             TopAppBar(
                 title = { Text(if (!enRonda) "Cobro" else if (estado.esLlena) "Cobro · Llena" else "Cobro · Sencillo") },
-                actions = { TextButton(onClick = { editandoPrecios = true }) { Text("Precios") } }
+                actions = {
+                    TextButton(onClick = { ajustandoVista = true }) { Text("👓 Vista") }
+                    TextButton(onClick = { editandoPrecios = true }) { Text("Precios") }
+                }
             )
         },
         bottomBar = {
@@ -104,11 +116,11 @@ fun CobroScreen(
             )
             else -> LazyVerticalGrid(
                 // Tantas columnas como quepan, de mínimo 64 dp cada una
-                columns = GridCells.Adaptive(minSize = 64.dp),
+                columns = GridCells.Adaptive(minSize = tamano.minimo),
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // El resumen ocupa toda la fila (span = todas las columnas)
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -118,11 +130,22 @@ fun CobroScreen(
                     CasillaTablero(
                         tablero = tablero,
                         jugando = tablero.id in estado.jugando,
+                        tamano = tamano,
                         onToque = { viewModel.alternar(tablero) }
                     )
                 }
             }
         }
+    }
+
+    if (ajustandoVista) {
+        DialogoVista(
+            tamano = viewModel.tamano,
+            vozAlTocar = viewModel.vozAlTocar,
+            onTamano = viewModel::cambiarTamano,
+            onVoz = viewModel::cambiarVozAlTocar,
+            onCerrar = { ajustandoVista = false }
+        )
     }
 
     if (editandoPrecios) {
@@ -168,7 +191,7 @@ private fun Resumen(estado: EstadoCobro, onLimpiar: () -> Unit) {
             )
             Text(
                 "${estado.jugando.size} de ${estado.tableros.size} tableros jugando",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
             Text(
@@ -188,33 +211,88 @@ private fun Resumen(estado: EstadoCobro, onLimpiar: () -> Unit) {
     }
 }
 
-/** Un tablero en la cuadrícula: número grande; pintado y con ✓ si está jugando. */
+/** Tamaños de las casillas para ver mejor: ancho mínimo y tamaño de letra. */
+private enum class TamanoCasilla(val etiqueta: String, val minimo: Dp, val numero: TextUnit, val detalle: TextUnit) {
+    NORMAL("Normal", 64.dp, 22.sp, 10.sp),
+    GRANDE("Grande", 100.dp, 36.sp, 14.sp),
+    MUY_GRANDE("Muy grande", 150.dp, 56.sp, 18.sp)
+}
+
+/**
+ * Colores fijos de alto contraste (no dependen del tema del celular):
+ * jugando = verde oscuro con número blanco; libre = blanco con borde negro grueso.
+ */
+private val VerdeJugando = Color(0xFF1B5E20)
+private val NegroBorde = Color(0xFF111111)
+
+/** Un tablero en la cuadrícula. Al tocarlo vibra un poco para confirmar el toque. */
 @Composable
-private fun CasillaTablero(tablero: Tablero, jugando: Boolean, onToque: () -> Unit) {
-    val colores = MaterialTheme.colorScheme
-    val forma = RoundedCornerShape(12.dp)
+private fun CasillaTablero(tablero: Tablero, jugando: Boolean, tamano: TamanoCasilla, onToque: () -> Unit) {
+    val vibracion = LocalHapticFeedback.current
+    val forma = RoundedCornerShape(14.dp)
     Box(
         modifier = Modifier
             .aspectRatio(1f)
-            .background(if (jugando) colores.primary else colores.surface, forma)
-            .border(if (jugando) 0.dp else 1.dp, colores.outlineVariant, forma)
-            .clickable(onClick = onToque),
+            .background(if (jugando) VerdeJugando else Color.White, forma)
+            .border(if (jugando) 0.dp else 3.dp, NegroBorde, forma)
+            .clickable {
+                vibracion.performHapticFeedback(HapticFeedbackType.LongPress)
+                onToque()
+            },
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 "${tablero.numero}",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (jugando) colores.onPrimary else colores.onSurface
+                fontSize = tamano.numero,
+                fontWeight = FontWeight.Black,
+                color = if (jugando) Color.White else NegroBorde
             )
             Text(
-                if (jugando) "✓ ${tablero.cantidadTablas}" else "${tablero.cantidadTablas} tablas",
-                fontSize = 10.sp,
-                color = if (jugando) colores.onPrimary else colores.onSurfaceVariant
+                if (jugando) "✓ JUEGA" else "${tablero.cantidadTablas} tablas",
+                fontSize = tamano.detalle,
+                fontWeight = FontWeight.Bold,
+                color = if (jugando) Color.White else NegroBorde
             )
         }
     }
+}
+
+/** Opciones para ver mejor el cobro: tamaño de las casillas y voz al tocar. */
+@Composable
+private fun DialogoVista(
+    tamano: Int,
+    vozAlTocar: Boolean,
+    onTamano: (Int) -> Unit,
+    onVoz: (Boolean) -> Unit,
+    onCerrar: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        title = { Text("Vista del cobro") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Tamaño de los números", style = MaterialTheme.typography.titleMedium)
+                TamanoCasilla.entries.forEachIndexed { i, opcion ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { onTamano(i) },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = tamano == i, onClick = { onTamano(i) })
+                        Text(opcion.etiqueta, fontSize = opcion.detalle * 1.3f)
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Decir el número al tocar", style = MaterialTheme.typography.titleMedium)
+                        Text("Ej: \"Tablero 23\" o \"Quitado 23\"", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = vozAlTocar, onCheckedChange = onVoz)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onCerrar) { Text("Listo") } }
+    )
 }
 
 @Composable
