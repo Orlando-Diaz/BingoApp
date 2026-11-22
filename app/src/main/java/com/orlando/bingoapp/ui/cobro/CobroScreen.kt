@@ -42,7 +42,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -141,9 +140,7 @@ fun CobroScreen(
     if (ajustandoVista) {
         DialogoVista(
             tamano = viewModel.tamano,
-            vozAlTocar = viewModel.vozAlTocar,
             onTamano = viewModel::cambiarTamano,
-            onVoz = viewModel::cambiarVozAlTocar,
             onCerrar = { ajustandoVista = false }
         )
     }
@@ -258,13 +255,11 @@ private fun CasillaTablero(tablero: Tablero, jugando: Boolean, tamano: TamanoCas
     }
 }
 
-/** Opciones para ver mejor el cobro: tamaño de las casillas y voz al tocar. */
+/** Opciones para ver mejor el cobro: tamaño de las casillas. */
 @Composable
 private fun DialogoVista(
     tamano: Int,
-    vozAlTocar: Boolean,
     onTamano: (Int) -> Unit,
-    onVoz: (Boolean) -> Unit,
     onCerrar: () -> Unit
 ) {
     AlertDialog(
@@ -281,13 +276,6 @@ private fun DialogoVista(
                         RadioButton(selected = tamano == i, onClick = { onTamano(i) })
                         Text(opcion.etiqueta, fontSize = opcion.detalle * 1.3f)
                     }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Decir el número al tocar", style = MaterialTheme.typography.titleMedium)
-                        Text("Ej: \"Tablero 23\" o \"Quitado 23\"", style = MaterialTheme.typography.bodySmall)
-                    }
-                    Switch(checked = vozAlTocar, onCheckedChange = onVoz)
                 }
             }
         },

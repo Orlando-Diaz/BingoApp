@@ -66,16 +66,8 @@ class Ajustes(context: Context) {
             prefs.edit().putInt(CLAVE_TAMANO_COBRO, valor).apply()
         }
 
-    /** Cobro: decir en voz alta el número del tablero al tocarlo. */
-    var vozEnCobro: Boolean
-        get() = prefs.getBoolean(CLAVE_VOZ_COBRO, false)
-        set(valor) {
-            prefs.edit().putBoolean(CLAVE_VOZ_COBRO, valor).apply()
-        }
-
     private companion object {
         const val CLAVE_TAMANO_COBRO = "tamano_cobro"
-        const val CLAVE_VOZ_COBRO = "voz_cobro"
         const val CLAVE_PATRON = "patron_tableros"
         const val CLAVE_VOZ_NOMBRE = "voz_nombre"
         const val CLAVE_TONO = "tono_voz"
