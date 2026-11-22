@@ -33,8 +33,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -44,10 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -79,15 +74,6 @@ fun JuegoScreen(
     var verificando by remember { mutableStateOf(false) }
     var sinJugadas by remember { mutableStateOf(false) }
     var viendoPremios by remember { mutableStateOf(false) }
-
-    // Ventana emergente de "¡BINGO!": sale cuando alguien completa con la balota que
-    // se acaba de marcar. Se recuerda con cuántas balotas se cerró, para que no vuelva
-    // a salir por lo mismo; con la siguiente balota puede salir otra vez.
-    var avisoCerradoCon by rememberSaveable { mutableStateOf(-1) }
-    val nuevosGanadores = estado.posiblesGanadores
-        .map { it to estado.conLaUltima(it) }
-        .filter { (_, conUltima) -> conUltima.isNotEmpty() }
-    val mostrarAvisoBingo = nuevosGanadores.isNotEmpty() && avisoCerradoCon != balotas.size
 
     // Flujo de ronda nueva: elegir tipo -> crear la ronda -> ir a Cobro
     val iniciarSencillo: () -> Unit = {
@@ -211,18 +197,6 @@ fun JuegoScreen(
                 onIrACobro()
             },
             onCancelar = { configurarLlena = false }
-        )
-    }
-
-    if (mostrarAvisoBingo) {
-        AvisoBingo(
-            grupos = nuevosGanadores,
-            esLlena = estado.esLlena,
-            onConfirmar = { premio, ganadores ->
-                viewModel.confirmarGanadores(premio, ganadores)
-                if (nuevosGanadores.size == 1) avisoCerradoCon = balotas.size
-            },
-            onSeguir = { avisoCerradoCon = balotas.size }
         )
     }
 
@@ -738,76 +712,5 @@ private fun DialogoCorregirPremio(
         },
         confirmButton = { TextButton(onClick = { onGuardar(nombre, figura) }, enabled = valido) { Text("Guardar") } },
         dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } }
-    )
-}
-
-/**
- * Ventana emergente grande cuando alguien completa con la balota que se acaba de marcar.
- * Aparece encima de todo, sin importar en qué parte de la pantalla esté tu papá, y vibra.
- * "Nadie cantó" la cierra: si nadie reclama, queda registrado que la dejaron pasar.
- */
-@Composable
-private fun AvisoBingo(
-    grupos: List<Pair<GanadoresDePremio, List<Ganador>>>,
-    esLlena: Boolean,
-    onConfirmar: (Premio, List<Ganador>) -> Unit,
-    onSeguir: () -> Unit
-) {
-    val vibracion = LocalHapticFeedback.current
-    LaunchedEffect(Unit) { vibracion.performHapticFeedback(HapticFeedbackType.LongPress) }
-    val colores = MaterialTheme.colorScheme
-
-    AlertDialog(
-        onDismissRequest = {}, // solo se cierra con los botones, para no quitarlo sin querer
-        containerColor = colores.tertiaryContainer,
-        title = {
-            Text(
-                "¡BINGO!",
-                fontSize = 40.sp,
-                fontWeight = FontWeight.Black,
-                color = colores.onTertiaryContainer,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                grupos.forEach { (grupo, ganadores) ->
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (esLlena) {
-                            Text(grupo.premio.nombre, style = MaterialTheme.typography.titleMedium, color = colores.onTertiaryContainer)
-                        }
-                        ganadores.forEach {
-                            Text(
-                                it.descripcion,
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colores.onTertiaryContainer
-                            )
-                            Text(it.nombreModo, style = MaterialTheme.typography.bodyLarge, color = colores.onTertiaryContainer)
-                        }
-                        if (ganadores.size > 1) {
-                            Text("Se divide el premio entre ${ganadores.size}", color = colores.onTertiaryContainer)
-                        }
-                        Button(
-                            onClick = { onConfirmar(grupo.premio, ganadores) },
-                            modifier = Modifier.fillMaxWidth().height(56.dp)
-                        ) {
-                            Text(
-                                if (grupos.size > 1) "✓ Confirmar ${grupo.premio.nombre}" else "✓ Confirmar ganador",
-                                fontSize = 18.sp
-                            )
-                        }
-                    }
-                }
-                OutlinedButton(onClick = onSeguir, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                    Text("Nadie cantó · seguir jugando", fontSize = 16.sp)
-                }
-            }
-        },
-        confirmButton = {}
     )
 }
