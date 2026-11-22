@@ -115,7 +115,7 @@ fun CobroScreen(
             )
             else -> LazyVerticalGrid(
                 // Tantas columnas como quepan, de mínimo 64 dp cada una
-                columns = GridCells.Adaptive(minSize = tamano.minimo),
+                columns = tamano.celdas,
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -208,11 +208,24 @@ private fun Resumen(estado: EstadoCobro, onLimpiar: () -> Unit) {
     }
 }
 
-/** Tamaños de las casillas para ver mejor: ancho mínimo y tamaño de letra. */
-private enum class TamanoCasilla(val etiqueta: String, val minimo: Dp, val numero: TextUnit, val detalle: TextUnit) {
-    NORMAL("Normal", 64.dp, 22.sp, 10.sp),
-    GRANDE("Grande", 100.dp, 36.sp, 14.sp),
-    MUY_GRANDE("Muy grande", 150.dp, 56.sp, 18.sp)
+/**
+ * Tamaños de las casillas para ver mejor.
+ * columnas: si se fija, siempre caben exactamente esas por fila (en cualquier celular);
+ * si es null, caben tantas como permita el ancho mínimo.
+ */
+private enum class TamanoCasilla(
+    val etiqueta: String,
+    val minimo: Dp,
+    val columnas: Int?,
+    val numero: TextUnit,
+    val detalle: TextUnit
+) {
+    NORMAL("Normal", 64.dp, null, 22.sp, 10.sp),
+    GRANDE("Grande", 0.dp, 4, 34.sp, 13.sp),
+    MUY_GRANDE("Muy grande", 150.dp, null, 56.sp, 18.sp);
+
+    val celdas: GridCells
+        get() = columnas?.let { GridCells.Fixed(it) } ?: GridCells.Adaptive(minSize = minimo)
 }
 
 /**
