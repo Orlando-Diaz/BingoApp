@@ -45,7 +45,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -115,7 +114,7 @@ fun CobroScreen(
             )
             else -> LazyVerticalGrid(
                 // Tantas columnas como quepan, de mínimo 64 dp cada una
-                columns = tamano.celdas,
+                columns = GridCells.Fixed(tamano.columnas),
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -209,23 +208,13 @@ private fun Resumen(estado: EstadoCobro, onLimpiar: () -> Unit) {
 }
 
 /**
- * Tamaños de las casillas para ver mejor.
- * columnas: si se fija, siempre caben exactamente esas por fila (en cualquier celular);
- * si es null, caben tantas como permita el ancho mínimo.
+ * Tamaños de las casillas para ver mejor. Cada uno fija cuántos tableros caben
+ * por fila, así se ve igual en cualquier celular.
  */
-private enum class TamanoCasilla(
-    val etiqueta: String,
-    val minimo: Dp,
-    val columnas: Int?,
-    val numero: TextUnit,
-    val detalle: TextUnit
-) {
-    NORMAL("Normal", 64.dp, null, 22.sp, 10.sp),
-    GRANDE("Grande", 0.dp, 4, 34.sp, 13.sp),
-    MUY_GRANDE("Muy grande", 150.dp, null, 56.sp, 18.sp);
-
-    val celdas: GridCells
-        get() = columnas?.let { GridCells.Fixed(it) } ?: GridCells.Adaptive(minSize = minimo)
+private enum class TamanoCasilla(val etiqueta: String, val columnas: Int, val numero: TextUnit, val detalle: TextUnit) {
+    PEQUENO("Pequeño (5 por fila)", 5, 22.sp, 10.sp),
+    GRANDE("Grande (4 por fila)", 4, 30.sp, 12.sp),
+    MUY_GRANDE("Muy grande (3 por fila)", 3, 44.sp, 15.sp)
 }
 
 /**
