@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.RadioButton
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -68,6 +69,7 @@ fun CobroScreen(
     var editandoPrecios by remember { mutableStateOf(false) }
     var ajustandoVista by remember { mutableStateOf(false) }
     val tamano = TamanoCasilla.entries[viewModel.tamano.coerceIn(0, 2)]
+    val medidas = tamano.medidas(esTablet())
     var limpiando by remember { mutableStateOf(false) }
     val enRonda = estado.partida != null && estado.hayPremios
 
@@ -113,8 +115,8 @@ fun CobroScreen(
                 modifier = Modifier.padding(padding).padding(24.dp)
             )
             else -> LazyVerticalGrid(
-                // Tantas columnas como quepan, de mínimo 64 dp cada una
-                columns = GridCells.Fixed(tamano.columnas),
+                // Columnas fijas según el tamaño elegido y si es celular o tablet
+                columns = GridCells.Fixed(medidas.columnas),
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -128,7 +130,7 @@ fun CobroScreen(
                     CasillaTablero(
                         tablero = tablero,
                         jugando = tablero.id in estado.jugando,
-                        tamano = tamano,
+                        medidas = medidas,
                         onToque = { viewModel.alternar(tablero) }
                     )
                 }
@@ -207,15 +209,27 @@ private fun Resumen(estado: EstadoCobro, onLimpiar: () -> Unit) {
     }
 }
 
+/** Cuántos tableros caben por fila y el tamaño de la letra. */
+private data class Medidas(val columnas: Int, val numero: TextUnit, val detalle: TextUnit)
+
 /**
- * Tamaños de las casillas para ver mejor. Cada uno fija cuántos tableros caben
- * por fila, así se ve igual en cualquier celular.
+ * Tamaños de las casillas para ver mejor. En la tablet caben más por fila,
+ * porque la pantalla es mucho más ancha que la de un celular.
  */
-private enum class TamanoCasilla(val etiqueta: String, val columnas: Int, val numero: TextUnit, val detalle: TextUnit) {
-    PEQUENO("Pequeño (5 por fila)", 5, 22.sp, 10.sp),
-    GRANDE("Grande (4 por fila)", 4, 30.sp, 12.sp),
-    MUY_GRANDE("Muy grande (3 por fila)", 3, 44.sp, 15.sp)
+private enum class TamanoCasilla(val nombre: String, val celular: Medidas, val tablet: Medidas) {
+    PEQUENO("Pequeño", Medidas(5, 22.sp, 10.sp), Medidas(7, 30.sp, 13.sp)),
+    GRANDE("Grande", Medidas(4, 30.sp, 12.sp), Medidas(6, 38.sp, 15.sp)),
+    MUY_GRANDE("Muy grande", Medidas(3, 44.sp, 15.sp), Medidas(5, 50.sp, 18.sp));
+
+    fun medidas(esTablet: Boolean): Medidas = if (esTablet) tablet else celular
 }
+
+/**
+ * Es tablet si su lado más corto mide 600 dp o más (el criterio que usa Android).
+ * Se usa el lado más corto para que no cambie al girar la pantalla.
+ */
+@Composable
+private fun esTablet(): Boolean = LocalConfiguration.current.smallestScreenWidthDp >= 600
 
 /**
  * Colores fijos de alto contraste (no dependen del tema del celular):
@@ -226,7 +240,7 @@ private val NegroBorde = Color(0xFF111111)
 
 /** Un tablero en la cuadrícula. Al tocarlo vibra un poco para confirmar el toque. */
 @Composable
-private fun CasillaTablero(tablero: Tablero, jugando: Boolean, tamano: TamanoCasilla, onToque: () -> Unit) {
+private fun CasillaTablero(tablero: Tablero, jugando: Boolean, medidas: Medidas, onToque: () -> Unit) {
     val vibracion = LocalHapticFeedback.current
     val forma = RoundedCornerShape(14.dp)
     Box(
@@ -243,13 +257,13 @@ private fun CasillaTablero(tablero: Tablero, jugando: Boolean, tamano: TamanoCas
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 "${tablero.numero}",
-                fontSize = tamano.numero,
+                fontSize = medidas.numero,
                 fontWeight = FontWeight.Black,
                 color = if (jugando) Color.White else NegroBorde
             )
             Text(
                 if (jugando) "✓ JUEGA" else "${tablero.cantidadTablas} tablas",
-                fontSize = tamano.detalle,
+                fontSize = medidas.detalle,
                 fontWeight = FontWeight.Bold,
                 color = if (jugando) Color.White else NegroBorde
             )
@@ -270,13 +284,18 @@ private fun DialogoVista(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Tamaño de los números", style = MaterialTheme.typography.titleMedium)
+                val tablet = esTablet()
                 TamanoCasilla.entries.forEachIndexed { i, opcion ->
+                    val medidasOpcion = opcion.medidas(tablet)
                     Row(
                         modifier = Modifier.fillMaxWidth().clickable { onTamano(i) },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RadioButton(selected = tamano == i, onClick = { onTamano(i) })
-                        Text(opcion.etiqueta, fontSize = opcion.detalle * 1.3f)
+                        Text(
+                            "${opcion.nombre} (${medidasOpcion.columnas} por fila)",
+                            fontSize = medidasOpcion.detalle * 1.3f
+                        )
                     }
                 }
             }
